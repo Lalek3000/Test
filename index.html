@@ -62,11 +62,18 @@ let targetBeer = 1000;
 let gameOver = false;
 class Entity {
     constructor(x, y, type, team) {
-        this.x = x; this.y = y; this.type = type; this.team = team; 
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.team = team;
         this.radius = (type === 'stage' || type === 'beer_crate' || type === 'scrap_pile') ? 20 : 8;
-        this.selected = false; this.target = null; this.speed = 2;
+        this.selected = false;
+        this.target = null;
+        this.speed = 2;
         this.hp = type === 'roadie' ? 150 : (type === 'stage' ? 500 : 50);
-        this.maxHp = this.hp; this.inventory = 0; this.cooldown = 0;
+        this.maxHp = this.hp;
+        this.inventory = 0;
+        this.cooldown = 0;
     }
 
     update() {
@@ -86,24 +93,39 @@ class Entity {
             }
         }
     }
+
     interact(target) {
         if (this.type === 'punk') {
             if (target.type === 'scrap_pile' && this.inventory < 10) {
-                if (this.cooldown === 0) { this.inventory += 2; this.cooldown = 30; }
-                if (this.inventory >= 10) this.target = findClosest(this, 'stage');
+                if (this.cooldown === 0) {
+                    this.inventory += 2;
+                    this.cooldown = 30;
+                }
+                if (this.inventory >= 10) {
+                    this.target = findClosest(this, 'stage');
+                }
             } else if (target.type === 'stage' && this.inventory > 0) {
-                resources.scrap += this.inventory; this.inventory = 0;
+                resources.scrap += this.inventory;
+                this.inventory = 0;
                 this.target = findClosest(this, 'scrap_pile');
             } else if (target.type === 'beer_crate' && this.cooldown === 0) {
-                resources.beer += 5; this.cooldown = 40;
-                if (resources.beer >= targetBeer) gameOver = true;
+                resources.beer += 5;
+                this.cooldown = 40;
+                if (resources.beer >= targetBeer) {
+                    gameOver = true;
+                }
             }
         }
         if (this.type === 'roadie' && target.team === 'enemy' && this.cooldown === 0) {
-            target.hp -= 15; this.cooldown = 25; if (target.hp  {
+            target.hp -= 15;
+            this.cooldown = 25;
+            if (target.hp  {
         if (e.type === type && e.hp > 0) {
             let dist = Math.hypot(e.x - entity.x, e.y - entity.y);
-            if (dist < minDist) { minDist = dist; closest = e; }
+            if (dist < minDist) {
+                minDist = dist;
+                closest = e;
+            }
         }
     });
     return closest;
@@ -111,28 +133,58 @@ class Entity {
 window.addEventListener('mousedown', (e) => {
     if (e.clientY < 50 || e.clientY > window.innerHeight - 60) return;
     if (buildMode) {
-        if (resources.scrap >= 30) { entities.push(new Entity(e.clientX, e.clientY, 'stage', 'player')); resources.scrap -= 30; }
-        buildMode = null; return;
+        if (resources.scrap >= 30) {
+            entities.push(new Entity(e.clientX, e.clientY, 'stage', 'player'));
+            resources.scrap -= 30;
+        }
+        buildMode = null;
+        return;
     }
-    if (e.button === 0) { selection.isSelecting = true; selection.startX = e.clientX; selection.startY = e.clientY; selection.endX = e.clientX; selection.endY = e.clientY; }
-    else if (e.button === 2) {
+    if (e.button === 0) {
+        selection.isSelecting = true;
+        selection.startX = e.clientX;
+        selection.startY = e.clientY;
+        selection.endX = e.clientX;
+        selection.endY = e.clientY;
+    } else if (e.button === 2) {
         e.preventDefault();
         let clicked = entities.find(ent => Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 15);
-        entities.forEach(ent => { if (ent.selected && ent.team === 'player') ent.target = clicked || { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' }; });
+        entities.forEach(ent => {
+            if (ent.selected && ent.team === 'player') {
+                if (clicked) {
+                    ent.target = clicked;
+                } else {
+                    ent.target = { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' };
+                }
+            }
+        });
     }
 });
 
-window.addEventListener('mousemove', (e) => { if (selection.isSelecting) { selection.endX = e.clientX; selection.endY = e.clientY; } });
+window.addEventListener('mousemove', (e) => {
+    if (selection.isSelecting) {
+        selection.endX = e.clientX;
+        selection.endY = e.clientY;
+    }
+});
+
 window.addEventListener('mouseup', (e) => {
     if (e.button === 0 && selection.isSelecting) {
         selection.isSelecting = false;
-        let xMin = Math.min(selection.startX, selection.endX), xMax = Math.max(selection.startX, selection.endX);
-        let yMin = Math.min(selection.startY, selection.endY), yMax = Math.max(selection.startY, selection.endY);
+        let xMin = Math.min(selection.startX, selection.endX);
+        let xMax = Math.max(selection.startX, selection.endX);
+        let yMin = Math.min(selection.startY, selection.endY);
+        let yMax = Math.max(selection.startY, selection.endY);
         let any = false;
         entities.forEach(ent => {
-            if (ent.team === 'player' && ent.x >= xMin && ent.x <= xMax && ent.y >= yMin && ent.y <= yMax) { ent.selected = true; any = true; }
-            else if (!any && Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 10 && ent.team === 'player') ent.selected = true;
-            else ent.selected = false;
+            if (ent.team === 'player' && ent.x >= xMin && ent.x <= xMax && ent.y >= yMin && ent.y <= yMax) {
+                ent.selected = true;
+                any = true;
+            } else if (!any && Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 10 && ent.team === 'player') {
+                ent.selected = true;
+            } else {
+                ent.selected = false;
+            }
         });
     }
 });
@@ -141,6 +193,7 @@ window.addEventListener('contextmenu', e => e.preventDefault());
 function setBuildMode(mode) { buildMode = mode; }
 function spawnWorker() { if (resources.scrap >= 10) { resources.scrap -= 10; entities.push(new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'punk', 'player')); } }
 function spawnMilitary() { if (resources.scrap >= 20) { resources.scrap -= 20; let r = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'roadie', 'player'); r.speed = 2.5; entities.push(r); } }
+
 entities.push(new Entity(canvas.width / 2, canvas.height / 2, 'stage', 'player'));
 entities.push(new Entity(150, 200, 'scrap_pile', 'neutral'));
 entities.push(new Entity(canvas.width - 150, 250, 'beer_crate', 'neutral'));
@@ -150,12 +203,20 @@ setInterval(() => {
     if (gameOver) return;
     let sides = [{x: Math.random()*canvas.width, y: -20}, {x: -20, y: Math.random()*canvas.height}, {x: canvas.width+20, y: Math.random()*canvas.height}];
     let spawn = sides[Math.floor(Math.random() * sides.length)];
-    let enemy = new Entity(spawn.x, spawn.y, 'spießer', 'enemy'); enemy.speed = 1.2;
+    let enemy = new Entity(spawn.x, spawn.y, 'spießer', 'enemy');
+    enemy.speed = 1.2;
     enemy.target = findClosest(enemy, 'stage') || entities.find(e => e.team === 'player');
     entities.push(enemy);
 }, 8000);
 
-setInterval(() => { entities.forEach(ent => { if (ent.type === 'roadie' && (!ent.target || ent.target.team !== 'enemy')) { let en = findClosest(ent, 'spießer'); if (en && Math.hypot(en.x - ent.x, en.y - ent.y) < 250) ent.target = en; } }); }, 1000);
+setInterval(() => {
+    entities.forEach(ent => {
+        if (ent.type === 'roadie' && (!ent.target || ent.target.team !== 'enemy')) {
+            let en = findClosest(ent, 'spießer');
+            if (en && Math.hypot(en.x - ent.x, en.y - ent.y) < 250) ent.target = en;
+        }
+    });
+}, 1000);
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
