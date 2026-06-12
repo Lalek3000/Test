@@ -138,7 +138,8 @@ window.addEventListener('mousedown', function(e) {
     if (e.clientY < 50 || e.clientY > window.innerHeight - 60) return;
     if (buildMode) {
         if (resources.scrap >= 30) {
-            entities.push(new Entity(e.clientX, e.clientY, 'stage', 'player'));
+            let bühne = new Entity(e.clientX, e.clientY, 'stage', 'player');
+            entities.push(bühne);
             resources.scrap -= 30;
         }
         buildMode = null;
@@ -164,7 +165,10 @@ window.addEventListener('mousedown', function(e) {
                 if (clicked) {
                     ent.target = clicked;
                 } else {
-                    ent.target = { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' };
+                    let zielX = e.clientX;
+                    let zielY = e.clientY;
+                    let wegpunkt = { x: zielX, y: zielY, radius: 2, team: 'neutral' };
+                    ent.target = wegpunkt;
                 }
             }
         }
@@ -207,13 +211,18 @@ window.addEventListener('mouseup', function(e) {
 window.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
 function setBuildMode(mode) { buildMode = mode; }
-function spawnWorker() { if (resources.scrap >= 10) { resources.scrap -= 10; entities.push(new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'punk', 'player')); } }
+function spawnWorker() { if (resources.scrap >= 10) { resources.scrap -= 10; let p = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'punk', 'player'); entities.push(p); } }
 function spawnMilitary() { if (resources.scrap >= 20) { resources.scrap -= 20; let r = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'roadie', 'player'); r.speed = 2.5; entities.push(r); } }
 
-entities.push(new Entity(canvas.width / 2, canvas.height / 2, 'stage', 'player'));
-entities.push(new Entity(150, 200, 'scrap_pile', 'neutral'));
-entities.push(new Entity(canvas.width - 150, 250, 'beer_crate', 'neutral'));
-entities.push(new Entity(200, canvas.height - 200, 'beer_crate', 'neutral'));
+let startBühne = new Entity(canvas.width / 2, canvas.height / 2, 'stage', 'player');
+let schrott1 = new Entity(150, 200, 'scrap_pile', 'neutral');
+let bier1 = new Entity(canvas.width - 150, 250, 'beer_crate', 'neutral');
+let bier2 = new Entity(200, canvas.height - 200, 'beer_crate', 'neutral');
+
+entities.push(startBühne);
+entities.push(schrott1);
+entities.push(bier1);
+entities.push(bier2);
 
 setInterval(function() {
     if (gameOver) return;
@@ -221,7 +230,8 @@ setInterval(function() {
     let spawn = sides[Math.floor(Math.random() * sides.length)];
     let enemy = new Entity(spawn.x, spawn.y, 'spießer', 'enemy');
     enemy.speed = 1.2;
-    enemy.target = findClosest(enemy, 'stage') || entities[0];
+    let zielBühne = findClosest(enemy, 'stage');
+    if (zielBühne) { enemy.target = zielBühne; }
     entities.push(enemy);
 }, 8000);
 
