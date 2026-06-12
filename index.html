@@ -3,65 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Berlin Punk RTS - 1000 Biere fürs Konzert</title>
+    <title>Berlin Punk RTS</title>
     <style>
         body {
-            margin: 0;
-            padding: 0;
-            background: #111;
-            color: #ff0055;
-            font-family: 'Courier New', Courier, monospace;
-            font-weight: bold;
-            overflow: hidden;
-            user-select: none;
+            margin: 0; padding: 0; background: #111; color: #ff0055;
+            font-family: 'Courier New', monospace; font-weight: bold;
+            overflow: hidden; user-select: none;
         }
         #ui {
-            position: absolute;
-            top: 0; left: 0; width: 100vw;
-            background: rgba(0, 0, 0, 0.85);
-            border-bottom: 4px solid #ff0055;
-            display: flex;
-            justify-content: space-around;
-            padding: 10px 0;
-            font-size: 16px;
-            z-index: 10;
+            position: absolute; top: 0; left: 0; width: 100vw;
+            background: rgba(0, 0, 0, 0.85); border-bottom: 4px solid #ff0055;
+            display: flex; justify-content: space-around; padding: 10px 0;
+            font-size: 16px; z-index: 10;
         }
         #controls {
-            position: absolute;
-            bottom: 0; left: 0; width: 100vw;
-            background: rgba(0, 0, 0, 0.85);
-            border-top: 4px solid #00ffcc;
-            display: flex;
-            padding: 10px;
-            gap: 10px;
-            z-index: 10;
-            box-sizing: border-box;
+            position: absolute; bottom: 0; left: 0; width: 100vw;
+            background: rgba(0, 0, 0, 0.85); border-top: 4px solid #00ffcc;
+            display: flex; padding: 10px; gap: 10px; z-index: 10; box-sizing: border-box;
         }
         button {
-            background: #222;
-            color: #00ffcc;
-            border: 2px solid #00ffcc;
-            padding: 8px 15px;
-            cursor: pointer;
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-            font-size: 14px;
+            background: #222; color: #00ffcc; border: 2px solid #00ffcc;
+            padding: 8px 15px; cursor: pointer; font-family: 'Courier New', monospace;
+            font-weight: bold; font-size: 14px;
         }
-        button:hover {
-            background: #00ffcc;
-            color: #222;
-        }
-        button:disabled {
-            border-color: #555;
-            color: #555;
-            cursor: not-allowed;
-            background: #111;
-        }
-        canvas {
-            display: block;
-            image-rendering: pixelated;
-            background: #2b2b2b;
-        }
+        button:hover { background: #00ffcc; color: #222; }
+        button:disabled { border-color: #555; color: #555; cursor: not-allowed; background: #111; }
+        canvas { display: block; image-rendering: pixelated; background: #2b2b2b; }
     </style>
 </head>
 <body>
@@ -69,7 +36,7 @@
 <div id="ui">
     <div>📍 Ort: Berlin SO36</div>
     <div>🍺 Biere: <span id="beer-count">0</span> / 1000</div>
-    <div>🎸 Schrott (Metall): <span id="scrap-count">50</span></div>
+    <div>🎸 Schrott: <span id="scrap-count">50</span></div>
     <div>👥 Punks: <span id="punk-count">3</span></div>
 </div>
 
@@ -82,35 +49,24 @@
 <canvas id="gameCanvas"></canvas>
 
 <script>
-// --- SPIEL-INITIALISIERUNG & VARIABLEN ---
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 let resources = { beer: 0, scrap: 50 };
 let selection = { startX: 0, startY: 0, endX: 0, endY: 0, isSelecting: false };
 let buildMode = null;
-
 let entities = [];
 let targetBeer = 1000;
 let gameOver = false;
-
 class Entity {
     constructor(x, y, type, team) {
-        this.x = x;
-        this.y = y;
-        this.type = type; 
-        this.team = team; 
+        this.x = x; this.y = y; this.type = type; this.team = team; 
         this.radius = (type === 'stage' || type === 'beer_crate' || type === 'scrap_pile') ? 20 : 8;
-        this.selected = false;
-        this.target = null;
-        this.speed = 2;
+        this.selected = false; this.target = null; this.speed = 2;
         this.hp = type === 'roadie' ? 150 : (type === 'stage' ? 500 : 50);
-        this.maxHp = this.hp;
-        this.inventory = 0;
-        this.cooldown = 0;
+        this.maxHp = this.hp; this.inventory = 0; this.cooldown = 0;
     }
 
     update() {
@@ -130,250 +86,109 @@ class Entity {
             }
         }
     }
-
     interact(target) {
         if (this.type === 'punk') {
             if (target.type === 'scrap_pile' && this.inventory < 10) {
-                if (this.cooldown === 0) {
-                    this.inventory += 2;
-                    this.cooldown = 30;
-                }
+                if (this.cooldown === 0) { this.inventory += 2; this.cooldown = 30; }
                 if (this.inventory >= 10) this.target = findClosest(this, 'stage');
             } else if (target.type === 'stage' && this.inventory > 0) {
-                resources.scrap += this.inventory;
-                this.inventory = 0;
+                resources.scrap += this.inventory; this.inventory = 0;
                 this.target = findClosest(this, 'scrap_pile');
-            } else if (target.type === 'beer_crate') {
-                if (this.cooldown === 0) {
-                    resources.beer += 5;
-                    this.cooldown = 40;
-                    if (resources.beer >= targetBeer) gameOver = true;
-                }
+            } else if (target.type === 'beer_crate' && this.cooldown === 0) {
+                resources.beer += 5; this.cooldown = 40;
+                if (resources.beer >= targetBeer) gameOver = true;
             }
         }
-        
-        if (this.type === 'roadie' && target.team === 'enemy') {
-            if (this.cooldown === 0) {
-                target.hp -= 15;
-                this.cooldown = 25;
-                if (target.hp  {
+        if (this.type === 'roadie' && target.team === 'enemy' && this.cooldown === 0) {
+            target.hp -= 15; this.cooldown = 25; if (target.hp  {
         if (e.type === type && e.hp > 0) {
             let dist = Math.hypot(e.x - entity.x, e.y - entity.y);
-            if (dist < minDist) {
-                minDist = dist;
-                closest = e;
-            }
+            if (dist < minDist) { minDist = dist; closest = e; }
         }
     });
     return closest;
 }
-
 window.addEventListener('mousedown', (e) => {
     if (e.clientY < 50 || e.clientY > window.innerHeight - 60) return;
-
     if (buildMode) {
-        if (resources.scrap >= 30) {
-            entities.push(new Entity(e.clientX, e.clientY, 'stage', 'player'));
-            resources.scrap -= 30;
-        }
-        buildMode = null;
-        return;
+        if (resources.scrap >= 30) { entities.push(new Entity(e.clientX, e.clientY, 'stage', 'player')); resources.scrap -= 30; }
+        buildMode = null; return;
     }
-
-    if (e.button === 0) { 
-        selection.isSelecting = true;
-        selection.startX = e.clientX;
-        selection.startY = e.clientY;
-        selection.endX = e.clientX;
-        selection.endY = e.clientY;
-    } else if (e.button === 2) { 
+    if (e.button === 0) { selection.isSelecting = true; selection.startX = e.clientX; selection.startY = e.clientY; selection.endX = e.clientX; selection.endY = e.clientY; }
+    else if (e.button === 2) {
         e.preventDefault();
-        let clickedTarget = entities.find(ent => Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 15);
-        
-        entities.forEach(ent => {
-            if (ent.selected && ent.team === 'player') {
-                if (clickedTarget) {
-                    ent.target = clickedTarget;
-                } else {
-                    ent.target = { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' };
-                }
-            }
-        });
+        let clicked = entities.find(ent => Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 15);
+        entities.forEach(ent => { if (ent.selected && ent.team === 'player') ent.target = clicked || { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' }; });
     }
 });
 
-window.addEventListener('mousemove', (e) => {
-    if (selection.isSelecting) {
-        selection.endX = e.clientX;
-        selection.endY = e.clientY;
-    }
-});
-
+window.addEventListener('mousemove', (e) => { if (selection.isSelecting) { selection.endX = e.clientX; selection.endY = e.clientY; } });
 window.addEventListener('mouseup', (e) => {
     if (e.button === 0 && selection.isSelecting) {
         selection.isSelecting = false;
-        let xMin = Math.min(selection.startX, selection.endX);
-        let xMax = Math.max(selection.startX, selection.endX);
-        let yMin = Math.min(selection.startY, selection.endY);
-        let yMax = Math.max(selection.startY, selection.endY);
-
-        let anySelected = false;
+        let xMin = Math.min(selection.startX, selection.endX), xMax = Math.max(selection.startX, selection.endX);
+        let yMin = Math.min(selection.startY, selection.endY), yMax = Math.max(selection.startY, selection.endY);
+        let any = false;
         entities.forEach(ent => {
-            if (ent.team === 'player' && ent.x >= xMin && ent.x <= xMax && ent.y >= yMin && ent.y <= yMax) {
-                ent.selected = true;
-                anySelected = true;
-            } else if (!anySelected && Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 10) {
-                if(ent.team === 'player') ent.selected = true;
-            } else {
-                if (!anySelected) ent.selected = false;
-            }
+            if (ent.team === 'player' && ent.x >= xMin && ent.x <= xMax && ent.y >= yMin && ent.y <= yMax) { ent.selected = true; any = true; }
+            else if (!any && Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 10 && ent.team === 'player') ent.selected = true;
+            else ent.selected = false;
         });
     }
 });
-
 window.addEventListener('contextmenu', e => e.preventDefault());
+
 function setBuildMode(mode) { buildMode = mode; }
-
-function spawnWorker() {
-    if (resources.scrap >= 10) {
-        resources.scrap -= 10;
-        entities.push(new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'punk', 'player'));
-    }
-}
-
-function spawnMilitary() {
-    if (resources.scrap >= 20) {
-        resources.scrap -= 20;
-        let r = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'roadie', 'player');
-        r.speed = 2.5;
-        entities.push(r);
-    }
-}
-
-// Initiales Map Setup
+function spawnWorker() { if (resources.scrap >= 10) { resources.scrap -= 10; entities.push(new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'punk', 'player')); } }
+function spawnMilitary() { if (resources.scrap >= 20) { resources.scrap -= 20; let r = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'roadie', 'player'); r.speed = 2.5; entities.push(r); } }
 entities.push(new Entity(canvas.width / 2, canvas.height / 2, 'stage', 'player'));
 entities.push(new Entity(150, 200, 'scrap_pile', 'neutral'));
 entities.push(new Entity(canvas.width - 150, 250, 'beer_crate', 'neutral'));
 entities.push(new Entity(200, canvas.height - 200, 'beer_crate', 'neutral'));
 
-// Spießer-Angriffe
 setInterval(() => {
     if (gameOver) return;
-    let sides = [
-        {x: Math.random() * canvas.width, y: -20},
-        {x: -20, y: Math.random() * canvas.height},
-        {x: canvas.width + 20, y: Math.random() * canvas.height}
-    ];
+    let sides = [{x: Math.random()*canvas.width, y: -20}, {x: -20, y: Math.random()*canvas.height}, {x: canvas.width+20, y: Math.random()*canvas.height}];
     let spawn = sides[Math.floor(Math.random() * sides.length)];
-    let enemy = new Entity(spawn.x, spawn.y, 'spießer', 'enemy');
-    enemy.speed = 1.2;
+    let enemy = new Entity(spawn.x, spawn.y, 'spießer', 'enemy'); enemy.speed = 1.2;
     enemy.target = findClosest(enemy, 'stage') || entities.find(e => e.team === 'player');
     entities.push(enemy);
 }, 8000);
 
-// Roadie-KI (Automatischer Schutz bei Gegnernähe)
-setInterval(() => {
-    entities.forEach(ent => {
-        if (ent.type === 'roadie' && (!ent.target || ent.target.team !== 'enemy')) {
-            let enemy = findClosest(ent, 'spießer');
-            if (enemy && Math.hypot(enemy.x - ent.x, enemy.y - ent.y) < 250) {
-                ent.target = enemy;
-            }
-        }
-    });
-}, 1000);
+setInterval(() => { entities.forEach(ent => { if (ent.type === 'roadie' && (!ent.target || ent.target.team !== 'enemy')) { let en = findClosest(ent, 'spießer'); if (en && Math.hypot(en.x - ent.x, en.y - ent.y) < 250) ent.target = en; } }); }, 1000);
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+    for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+    for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
-    // Grid (Berliner Asphalt)
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 2;
-    let gridSize = 40;
-    for (let x = 0; x < canvas.width; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-    }
-
-    // Filter tote Einheiten heraus
     entities = entities.filter(e => e.hp > 0 || e.type === 'scrap_pile' || e.type === 'beer_crate');
-    
     entities.forEach(ent => {
-        if (ent.type === 'stage') {
-            ctx.fillStyle = "#222";
-            ctx.fillRect(ent.x - 25, ent.y - 25, 50, 50);
-            ctx.strokeStyle = "#ff0055";
-            ctx.lineWidth = 4;
-            ctx.strokeRect(ent.x - 25, ent.y - 25, 50, 50);
-            ctx.fillStyle = "#ff0055";
-            ctx.font = "10px monospace";
-            ctx.fillText("BÜHNE", ent.x - 15, ent.y + 4);
-        } 
-        else if (ent.type === 'scrap_pile') {
-            ctx.fillStyle = "#00ffcc";
-            ctx.beginPath(); ctx.arc(ent.x, ent.y, ent.radius, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("METALL", ent.x - 18, ent.y + 4);
-        } 
-        else if (ent.type === 'beer_crate') {
-            ctx.fillStyle = "#ffcc00";
-            ctx.fillRect(ent.x - 15, ent.y - 15, 30, 30);
-            ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("BIER", ent.x - 11, ent.y + 4);
-        } 
-        else if (ent.type === 'punk') {
-            ctx.fillStyle = ent.selected ? "#00ffcc" : "#ff0055";
-            ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20);
-            ctx.fillStyle = "#ff0055";
-            ctx.fillRect(ent.x - 2, ent.y - 18, 4, 6);
-        } 
-        else if (ent.type === 'roadie') {
-            ctx.fillStyle = ent.selected ? "#00ffcc" : "#33ff33";
-            ctx.fillRect(ent.x - 8, ent.y - 14, 16, 24);
-            ctx.fillStyle = "#000";
-            ctx.fillRect(ent.x - 4, ent.y - 8, 8, 12);
-        } 
-        else if (ent.type === 'spießer') {
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20);
-            ctx.fillStyle = "#999999";
-            ctx.fillRect(ent.x + 4, ent.y, 4, 6);
-        }
-
-        if (ent.hp < ent.maxHp && ent.maxHp > 0) {
-            ctx.fillStyle = "red"; ctx.fillRect(ent.x - 15, ent.y - 25, 30, 4);
-            ctx.fillStyle = "green"; ctx.fillRect(ent.x - 15, ent.y - 25, (ent.hp / ent.maxHp) * 30, 4);
-        }
+        if (ent.type === 'stage') { ctx.fillStyle = "#222"; ctx.fillRect(ent.x - 25, ent.y - 25, 50, 50); ctx.strokeStyle = "#ff0055"; ctx.lineWidth = 4; ctx.strokeRect(ent.x - 25, ent.y - 25, 50, 50); ctx.fillStyle = "#ff0055"; ctx.font = "10px monospace"; ctx.fillText("BÜHNE", ent.x - 15, ent.y + 4); } 
+        else if (ent.type === 'scrap_pile') { ctx.fillStyle = "#00ffcc"; ctx.beginPath(); ctx.arc(ent.x, ent.y, ent.radius, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("METALL", ent.x - 18, ent.y + 4); } 
+        else if (ent.type === 'beer_crate') { ctx.fillStyle = "#ffcc00"; ctx.fillRect(ent.x - 15, ent.y - 15, 30, 30); ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("BIER", ent.x - 11, ent.y + 4); } 
+        else if (ent.type === 'punk') { ctx.fillStyle = ent.selected ? "#00ffcc" : "#ff0055"; ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20); ctx.fillStyle = "#ff0055"; ctx.fillRect(ent.x - 2, ent.y - 18, 4, 6); } 
+        else if (ent.type === 'roadie') { ctx.fillStyle = ent.selected ? "#00ffcc" : "#33ff33"; ctx.fillRect(ent.x - 8, ent.y - 14, 16, 24); ctx.fillStyle = "#000"; ctx.fillRect(ent.x - 4, ent.y - 8, 8, 12); } 
+        else if (ent.type === 'spießer') { ctx.fillStyle = "#ffffff"; ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20); ctx.fillStyle = "#999999"; ctx.fillRect(ent.x + 4, ent.y, 4, 6); }
+        if (ent.hp < ent.maxHp && ent.maxHp > 0) { ctx.fillStyle = "red"; ctx.fillRect(ent.x - 15, ent.y - 25, 30, 4); ctx.fillStyle = "green"; ctx.fillRect(ent.x - 15, ent.y - 25, (ent.hp / ent.maxHp) * 30, 4); }
     });
 
-    if (selection.isSelecting) {
-        ctx.strokeStyle = "#00ffcc";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(selection.startX, selection.startY, selection.endX - selection.startX, selection.endY - selection.startY);
-    }
-
+    if (selection.isSelecting) { ctx.strokeStyle = "#00ffcc"; ctx.lineWidth = 1; ctx.strokeRect(selection.startX, selection.startY, selection.endX - selection.startX, selection.endY - selection.startY); }
     document.getElementById("beer-count").innerText = resources.beer;
     document.getElementById("scrap-count").innerText = resources.scrap;
     document.getElementById("punk-count").innerText = entities.filter(e => e.team === 'player' && (e.type === 'punk' || e.type === 'roadie')).length;
-
     document.getElementById("btn-punk").disabled = resources.scrap < 10;
     document.getElementById("btn-roadie").disabled = resources.scrap < 20;
     document.getElementById("btn-stage").disabled = resources.scrap < 30;
 
     if (gameOver) {
-        ctx.fillStyle = "rgba(0,0,0,0.9)";
-        ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle = "#00ffcc";
-        ctx.font = "40px Courier New";
-        ctx.fillText("PROST! 1000 BIERE GEZAPFT!", canvas.width/2 - 250, canvas.height/2);
-        ctx.font = "20px Courier New";
-        ctx.fillText("Das Konzert rockt ganz Berlin!", canvas.width/2 - 160, canvas.height/2 + 50);
+        ctx.fillStyle = "rgba(0,0,0,0.9)"; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = "#00ffcc"; ctx.font = "40px Courier New"; ctx.fillText("PROST! 1000 BIERE GEZAPFT!", canvas.width/2 - 250, canvas.height/2);
         return;
     }
-
     requestAnimationFrame(draw);
 }
-
 setInterval(() => { entities.forEach(e => e.update()); }, 30);
 requestAnimationFrame(draw);
 </script>
