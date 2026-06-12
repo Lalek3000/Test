@@ -154,7 +154,8 @@ window.addEventListener('mousedown', (e) => {
                 if (clicked) {
                     ent.target = clicked;
                 } else {
-                    ent.target = { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' };
+                    let pos = { x: e.clientX, y: e.clientY, radius: 2, team: 'neutral' };
+                    ent.target = pos;
                 }
             }
         });
