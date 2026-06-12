@@ -67,7 +67,7 @@
 <body>
 
 <div id="ui">
-    <div>📍 Ort: Berlin KOPIEREN</div>
+    <div>📍 Ort: Berlin SO36</div>
     <div>🍺 Biere: <span id="beer-count">0</span> / 1000</div>
     <div>🎸 Schrott (Metall): <span id="scrap-count">50</span></div>
     <div>👥 Punks: <span id="punk-count">3</span></div>
@@ -96,14 +96,14 @@ let buildMode = null;
 let entities = [];
 let targetBeer = 1000;
 let gameOver = false;
-// --- ENTITY-KLASSEN ---
+
 class Entity {
     constructor(x, y, type, team) {
         this.x = x;
         this.y = y;
-        this.type = type; // 'punk' (worker), 'roadie' (fighter), 'stage', 'beer_crate', 'scrap_pile', 'spießer'
-        this.team = team; // 'player' oder 'enemy' or 'neutral'
-        this.radius = type === 'stage' || type === 'beer_crate' || type === 'scrap_pile' ? 20 : 8;
+        this.type = type; 
+        this.team = team; 
+        this.radius = (type === 'stage' || type === 'beer_crate' || type === 'scrap_pile') ? 20 : 8;
         this.selected = false;
         this.target = null;
         this.speed = 2;
@@ -117,7 +117,6 @@ class Entity {
         if (this.hp <= 0) return;
         if (this.cooldown > 0) this.cooldown--;
 
-        // Bewegung zum Ziel
         if (this.target && (this.type === 'punk' || this.type === 'roadie' || this.type === 'spießer')) {
             let dx = this.target.x - this.x;
             let dy = this.target.y - this.y;
@@ -127,7 +126,6 @@ class Entity {
                 this.x += (dx / dist) * this.speed;
                 this.y += (dy / dist) * this.speed;
             } else {
-                // Interaktion bei Ankunft
                 this.interact(this.target);
             }
         }
@@ -170,7 +168,6 @@ class Entity {
     return closest;
 }
 
-// --- STEUERUNG (MAUS & SELEKTION) ---
 window.addEventListener('mousedown', (e) => {
     if (e.clientY < 50 || e.clientY > window.innerHeight - 60) return;
 
@@ -183,13 +180,13 @@ window.addEventListener('mousedown', (e) => {
         return;
     }
 
-    if (e.button === 0) { // Linksklick: Box-Auswahl starten
+    if (e.button === 0) { 
         selection.isSelecting = true;
         selection.startX = e.clientX;
         selection.startY = e.clientY;
         selection.endX = e.clientX;
         selection.endY = e.clientY;
-    } else if (e.button === 2) { // Rechtsklick: Befehl erteilen
+    } else if (e.button === 2) { 
         e.preventDefault();
         let clickedTarget = entities.find(ent => Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 15);
         
@@ -226,17 +223,15 @@ window.addEventListener('mouseup', (e) => {
                 ent.selected = true;
                 anySelected = true;
             } else if (!anySelected && Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 10) {
-                // Klick-Auswahl fallback
                 if(ent.team === 'player') ent.selected = true;
             } else {
-                ent.selected = false;
+                if (!anySelected) ent.selected = false;
             }
         });
     }
 });
 
 window.addEventListener('contextmenu', e => e.preventDefault());
-// --- GAMEPLAY MECHANIKEN ---
 function setBuildMode(mode) { buildMode = mode; }
 
 function spawnWorker() {
@@ -255,13 +250,13 @@ function spawnMilitary() {
     }
 }
 
-// Map Setup
+// Initiales Map Setup
 entities.push(new Entity(canvas.width / 2, canvas.height / 2, 'stage', 'player'));
 entities.push(new Entity(150, 200, 'scrap_pile', 'neutral'));
 entities.push(new Entity(canvas.width - 150, 250, 'beer_crate', 'neutral'));
 entities.push(new Entity(200, canvas.height - 200, 'beer_crate', 'neutral'));
 
-// Gegner-Spawns (Spießer greifen an!)
+// Spießer-Angriffe
 setInterval(() => {
     if (gameOver) return;
     let sides = [
@@ -276,7 +271,7 @@ setInterval(() => {
     entities.push(enemy);
 }, 8000);
 
-// Automatische Aggro für Roadies
+// Roadie-KI (Automatischer Schutz bei Gegnernähe)
 setInterval(() => {
     entities.forEach(ent => {
         if (ent.type === 'roadie' && (!ent.target || ent.target.team !== 'enemy')) {
@@ -288,11 +283,10 @@ setInterval(() => {
     });
 }, 1000);
 
-// --- RENDERING (PIXEL ART STYLE) ---
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Grid-Hintergrund (Berliner Asphalt)
+    // Grid (Berliner Asphalt)
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 2;
     let gridSize = 40;
@@ -303,12 +297,10 @@ function draw() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
 
-    // Entities zeichnen
+    // Filter tote Einheiten heraus
     entities = entities.filter(e => e.hp > 0 || e.type === 'scrap_pile' || e.type === 'beer_crate');
     
     entities.forEach(ent => {
-        ctx.fillStyle = "#fff";
-        
         if (ent.type === 'stage') {
             ctx.fillStyle = "#222";
             ctx.fillRect(ent.x - 25, ent.y - 25, 50, 50);
@@ -322,62 +314,54 @@ function draw() {
         else if (ent.type === 'scrap_pile') {
             ctx.fillStyle = "#00ffcc";
             ctx.beginPath(); ctx.arc(ent.x, ent.y, ent.radius, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "#000"; ctx.fillText("METALL", ent.x - 18, ent.y + 4);
+            ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("METALL", ent.x - 18, ent.y + 4);
         } 
         else if (ent.type === 'beer_crate') {
             ctx.fillStyle = "#ffcc00";
             ctx.fillRect(ent.x - 15, ent.y - 15, 30, 30);
-            ctx.fillStyle = "#000"; ctx.font = "10px monospace";
-            ctx.fillText("BIER", ent.x - 11, ent.y + 4);
+            ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("BIER", ent.x - 11, ent.y + 4);
         } 
         else if (ent.type === 'punk') {
             ctx.fillStyle = ent.selected ? "#00ffcc" : "#ff0055";
-            ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20); // Pixel-Body
-            // Irokesenschnitt
+            ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20);
             ctx.fillStyle = "#ff0055";
             ctx.fillRect(ent.x - 2, ent.y - 18, 4, 6);
         } 
         else if (ent.type === 'roadie') {
             ctx.fillStyle = ent.selected ? "#00ffcc" : "#33ff33";
             ctx.fillRect(ent.x - 8, ent.y - 14, 16, 24);
-            // Lederweste
             ctx.fillStyle = "#000";
             ctx.fillRect(ent.x - 4, ent.y - 8, 8, 12);
         } 
         else if (ent.type === 'spießer') {
-            ctx.fillStyle = "#ffffff"; // Spießer in weiß/grau
+            ctx.fillStyle = "#ffffff";
             ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20);
-            ctx.fillStyle = "#999999"; // Aktenkoffer
+            ctx.fillStyle = "#999999";
             ctx.fillRect(ent.x + 4, ent.y, 4, 6);
         }
 
-        // Lebensbalken für beschädigte Einheiten
         if (ent.hp < ent.maxHp && ent.maxHp > 0) {
             ctx.fillStyle = "red"; ctx.fillRect(ent.x - 15, ent.y - 25, 30, 4);
             ctx.fillStyle = "green"; ctx.fillRect(ent.x - 15, ent.y - 25, (ent.hp / ent.maxHp) * 30, 4);
         }
     });
 
-    // Zeichne Selektions-Box
     if (selection.isSelecting) {
         ctx.strokeStyle = "#00ffcc";
         ctx.lineWidth = 1;
         ctx.strokeRect(selection.startX, selection.startY, selection.endX - selection.startX, selection.endY - selection.startY);
     }
 
-    // UI aktualisieren
     document.getElementById("beer-count").innerText = resources.beer;
     document.getElementById("scrap-count").innerText = resources.scrap;
     document.getElementById("punk-count").innerText = entities.filter(e => e.team === 'player' && (e.type === 'punk' || e.type === 'roadie')).length;
 
-    // Buttons disablen wenn zu wenig Ressourcen
     document.getElementById("btn-punk").disabled = resources.scrap < 10;
     document.getElementById("btn-roadie").disabled = resources.scrap < 20;
     document.getElementById("btn-stage").disabled = resources.scrap < 30;
 
-    // Game Over Check
     if (gameOver) {
-        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.fillStyle = "rgba(0,0,0,0.9)";
         ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.fillStyle = "#00ffcc";
         ctx.font = "40px Courier New";
@@ -390,10 +374,8 @@ function draw() {
     requestAnimationFrame(draw);
 }
 
-// Game Loops starten
 setInterval(() => { entities.forEach(e => e.update()); }, 30);
 requestAnimationFrame(draw);
-
 </script>
 </body>
 </html>
