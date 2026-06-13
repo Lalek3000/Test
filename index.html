@@ -3,249 +3,296 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weltraum Flug-Simulator</title>
+    <title>Sci-Fi Weltraum-Simulator</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; user-select: none; }
-        #instructions {
-            position: absolute; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); color: white;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center; cursor: pointer;
-            text-align: center; z-index: 10;
+        body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; background: #000; user-select: none; }
+        #canvas-container { position: relative; width: 100vw; height: 100vh; cursor: none; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        /* Cockpit HUD Overlay */
+        #hud {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; box-sizing: border-box;
+            border: 20px solid #1a1a1a;
+            box-shadow: inset 0 0 100px rgba(0,255,255,0.15);
         }
+        .hud-panel {
+            position: absolute; background: rgba(10, 25, 25, 0.75);
+            border: 2px solid #00ffcc; color: #00ffcc; padding: 15px;
+            border-radius: 5px; box-shadow: 0 0 15px rgba(0,255,200,0.3);
+        }
+        #hud-left { bottom: 40px; left: 40px; width: 180px; }
+        #hud-right { bottom: 40px; right: 40px; width: 180px; text-align: right; }
+        
+        /* Fadenkreuz folgt der Maus */
         #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 6px; height: 6px; background: rgba(255,255,255,0.5);
-            border-radius: 50%; transform: translate(-50%, -50%);
-            pointer-events: none; z-index: 5;
+            position: absolute; width: 30px; height: 30px;
+            border: 2px solid #ff3333; border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none;
+            box-shadow: 0 0 8px #ff3333;
+        }
+        #crosshair::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 4px; height: 4px; background: #ff3333;
+            transform: translate(-50%, -50%); border-radius: 50%;
+        }
+        #intro {
+            position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.85);
+            color: #00ffcc; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; text-align: center; z-index: 100;
         }
         .btn {
-            background: #007acc; padding: 12px 24px; font-size: 18px;
-            color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 15px;
+            background: #00aa88; color: black; font-weight: bold; padding: 12px 30px;
+            font-size: 18px; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <div id="instructions">
-        <h1>Weltraum-Simulator bereit</h1>
-        <p>W = Vorwärts fliegen | S = Rückwärts fliegen</p>
-        <p>A / D = Seitwärts schweben | Maus = In alle Richtungen steuern/umsehen</p>
-        <p>Leertaste = Nach oben steigen | Shift = Nach unten sinken</p>
-        <button class="btn">Triebwerke starten</button>
+    <div id="intro">
+        <h1>INTERSTELLAR COCKPIT INITIALIZED</h1>
+        <p>W / S = Nicken (Pitch) | Q / E = Gieren (Yaw) | A / D = Rollen (Roll)</p>
+        <p>LEERTASTE = Vorwärtsschub | SHIFT = Rückwärtsschub / Bremsen</p>
+        <p>MAUS = Fadenkreuz bewegen | LINKSKLICK = Laser-Kanonen abfeuern</p>
+        <button class="btn" onclick="startSim()">SYSTEME STARTEN</button>
     </div>
-    <div id="crosshair"></div>
 
-    <canvas id="spaceCanvas"></canvas>
+    <div id="canvas-container">
+        <canvas id="spaceCanvas"></canvas>
+        <div id="hud">
+            <div id="hud-left" class="hud-panel">
+                <div>SPEED: <span id="val-speed">0</span> km/h</div>
+                <div>THRUST: <span id="val-thrust">0</span>%</div>
+            </div>
+            <div id="hud-right" class="hud-panel">
+                <div>LASER: <span id="val-laser">READY</span></div>
+                <div>COORDS: <span id="val-coords">0,0</span></div>
+            </div>
+        </div>
+        <div id="crosshair"></div>
+    </div>
 
     <script>
         const canvas = document.getElementById('spaceCanvas');
         const ctx = canvas.getContext('2d');
+        const crosshair = document.getElementById('crosshair');
 
         let w = window.innerWidth, h = window.innerHeight;
         canvas.width = w; canvas.height = h;
 
-        // Spieler-Position und Flug-Ausrichtung (Blickwinkel)
-        const player = { x: 0, y: 0, z: 20, yaw: 0, pitch: 0 };
-        const keys = { w: 0, s: 0, a: 0, d: 0, space: 0, shift: 0 };
+        let simRunning = false;
+        let mouseX = w / 2, mouseY = h / 2;
 
-        // 1. Skybox: Feste Sterne im Raum generieren
+        // Spieler-Physik-Status (Position, Drehung und Rotations-Trägheit)
+        const player = {
+            x: 0, y: 0, z: 50,
+            pitch: 0, yaw: 0, roll: 0,
+            vPitch: 0, vYaw: 0, vRoll: 0, // Aktuelle Rotations-Geschwindigkeiten
+            speed: 0, targetSpeed: 0
+        };
+
+        const keys = { w:0, s:0, a:0, d:0, q:0, e:0, space:0, shift:0 };
         const stars = [];
-        for(let i = 0; i < 400; i++) {
-            stars.push({
-                x: (Math.random() - 0.5) * 600,
-                y: (Math.random() - 0.5) * 600,
-                z: (Math.random() - 0.5) * 600,
-                size: 0.5 + Math.random() * 1.5
-            });
-        }
-
-        // 2. Planeten mit verschiedenen Stilen generieren
         const planets = [];
-        const planetStyles = [
-            { c: '#bf8d3c', hasRing: true },  // Saturn-Stil
-            { c: '#2b82c9', hasRing: false }, // Erd-Stil
-            { c: '#c1440e', hasRing: false }, // Mars-Stil
-            { c: '#4f725d', hasRing: false }, // Giftwelt
-            { c: '#a5a5a5', hasRing: true }   // Eisplanet
-        ];
+        const lasers = [];
 
-        for(let i = 0; i < 30; i++) {
-            const style = planetStyles[Math.floor(Math.random() * planetStyles.length)];
+        // Sterne & Planeten generieren
+        for(let i=0; i<350; i++) {
+            stars.push({ x:(Math.random()-0.5)*800, y:(Math.random()-0.5)*800, z:(Math.random()-0.5)*800, size:0.5+Math.random()*1.5 });
+        }
+        const colors = ['#bf8d3c', '#2b82c9', '#c1440e', '#4f725d', '#a5a5a5'];
+        for(let i=0; i<20; i++) {
             planets.push({
-                x: (Math.random() - 0.5) * 250,
-                y: (Math.random() - 0.5) * 250,
-                z: (Math.random() - 0.5) * 250,
-                r: 4 + Math.random() * 8, // Radius
-                c: style.c,
-                hasRing: style.hasRing
+                x:(Math.random()-0.5)*300, y:(Math.random()-0.5)*300, z:(Math.random()-0.5)*300,
+                r:5+Math.random()*10, c:colors[Math.floor(Math.random()*colors.length)], hasRing:Math.random()>0.6
             });
         }
 
-        // Steuerung sperren (Pointer Lock)
-        const inst = document.getElementById('instructions');
-        let locked = false;
-
-        inst.addEventListener('click', () => { canvas.requestPointerLock(); });
-        document.addEventListener('pointerlockchange', () => {
-            locked = document.pointerLockElement === canvas;
-            inst.style.display = locked ? 'none' : 'flex';
+        // Mausbewegung fangen (Fadenkreuz positionieren)
+        document.getElementById('canvas-container').addEventListener('mousemove', (e) => {
+            mouseX = e.clientX; mouseY = e.clientY;
+            crosshair.style.left = mouseX + 'y'.replace('y','px');
+            crosshair.style.top = mouseY + 'y'.replace('y','px');
         });
 
-        // Maus-Rotation (Pitch = Hoch/Runter, Yaw = Links/Rechts)
-        document.addEventListener('mousemove', (e) => {
-            if (!locked) return;
-            player.yaw -= e.movementX * 0.0025;
-            player.pitch -= e.movementY * 0.0025;
-            player.pitch = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, player.pitch));
-        });
-
-        // Tastatur-Abfrage für Bewegung
+        // Tastatur-Events
         window.addEventListener('keydown', (e) => {
-            if(e.code === 'KeyW') keys.w = 1;
-            if(e.code === 'KeyS') keys.s = 1;
-            if(e.code === 'KeyA') keys.a = 1;
-            if(e.code === 'KeyD') keys.d = 1;
-            if(e.code === 'Space') keys.space = 1;
-            if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = 1;
+            if(e.code === 'KeyW') keys.w = 1; if(e.code === 'KeyS') keys.s = 1;
+            if(e.code === 'KeyA') keys.a = 1; if(e.code === 'KeyD') keys.d = 1;
+            if(e.code === 'KeyQ') keys.q = 1; if(e.code === 'KeyE') keys.e = 1;
+            if(e.code === 'Space') keys.space = 1; if(e.code === 'ShiftLeft') keys.shift = 1;
+        });
+        window.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') keys.w = 0; if(e.code === 'KeyS') keys.s = 0;
+            if(e.code === 'KeyA') keys.a = 0; if(e.code === 'KeyD') keys.d = 0;
+            if(e.code === 'KeyQ') keys.q = 0; if(e.code === 'KeyE') keys.e = 0;
+            if(e.code === 'Space') keys.space = 0; if(e.code === 'ShiftLeft') keys.shift = 0;
         });
 
-        window.addEventListener('keyup', (e) => {
-            if(e.code === 'KeyW') keys.w = 0;
-            if(e.code === 'KeyS') keys.s = 0;
-            if(e.code === 'KeyA') keys.a = 0;
-            if(e.code === 'KeyD') keys.d = 0;
-            if(e.code === 'Space') keys.space = 0;
-            if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = 0;
+        function startSim() {
+            document.getElementById('intro').style.display = 'none';
+            simRunning = true;
+            loop();
+        }
+
+        // Laserschuss triggern
+        document.getElementById('canvas-container').addEventListener('mousedown', () => {
+            if(!simRunning) return;
+            // Laser startet am unteren Cockpitrand (Kanonen) und fliegt Richtung Fadenkreuz
+            lasers.push({
+                x: player.x, y: player.y - 2, z: player.z,
+                tx: mouseX, ty: mouseY, t: 0
+            });
         });
 
         window.addEventListener('resize', () => {
             w = window.innerWidth; h = window.innerHeight;
             canvas.width = w; canvas.height = h;
         });
-          // --- 3D-FLUGPHYSIK & RENDERING ENGINE ---
+        // --- 3D-FLUGPHYSIK (MIT TRÄGHEIT) & RENDERING ---
         function loop() {
-            // 1. Position aktualisieren basierend auf Blickrichtung
-            if (locked) {
-                let speed = 0.35;
+            if (!simRunning) return;
 
-                let cosPitch = Math.cos(player.pitch);
-                let sinPitch = Math.sin(player.pitch);
-                let cosYaw = Math.cos(player.yaw);
-                let sinYaw = Math.sin(player.yaw);
+            // 1. ROTATIONS-TRÄGHEIT (INERTIA) BERECHNEN
+            const accel = 0.003; // Wie schnell reagiert das Schiff auf Tastendruck
+            const friction = 0.93; // Reibung im Steuerknüppel (Dämpfung)
 
-                // Blickrichtungs-Vektoren berechnen
-                let forwardX = sinYaw * cosPitch;
-                let forwardY = sinPitch;
-                let forwardZ = -cosYaw * cosPitch;
+            // Nicken (W/S)
+            if (keys.w) player.vPitch += accel;
+            if (keys.s) player.vPitch -= accel;
+            player.vPitch *= friction;
+            player.pitch += player.vPitch;
 
-                // Seitwärts-Vektoren berechnen
-                let strafeX = cosYaw;
-                let strafeZ = sinYaw;
+            // Gieren (Q/E)
+            if (keys.q) player.vYaw += accel;
+            if (keys.e) player.vYaw -= accel;
+            player.vYaw *= friction;
+            player.yaw += player.vYaw;
 
-                // Tausch der Achsen: W erhöht den Vorwärtsdrang, S verringert ihn
-                let moveForward = keys.w - keys.s;
-                let moveStrafe = keys.d - keys.a;
-                let moveVertical = keys.space - keys.shift;
+            // Rollen (A/D)
+            if (keys.a) player.vRoll -= accel;
+            if (keys.d) player.vRoll += accel;
+            player.vRoll *= friction;
+            player.roll += player.vRoll;
 
-                // Bewegung auf allen drei Achsen anwenden (Vorzeichen für W/S korrigiert)
-                player.x += (forwardX * moveForward + strafeX * moveStrafe) * speed;
-                player.y += (forwardY * moveForward + moveVertical) * speed;
-                player.z += (forwardZ * moveForward + strafeZ * moveStrafe) * speed;
-            }
+            // 2. LINEARER SCHUB & TRÄGHEIT (LEERTASTE / SHIFT)
+            if (keys.space) player.targetSpeed = 0.8;
+            else if (keys.shift) player.targetSpeed = -0.3;
+            else player.targetSpeed *= 0.98; // Sanft ausrollen lassen bei fehlendem Schub
 
-            // Canvas für neuen Frame leeren
+            player.speed += (player.targetSpeed - player.speed) * 0.05; // Träge Geschwindigkeitsänderung
+
+            // Richtungsberechnung im echten 3D-Raum (Matrixfreie Rotation)
+            let cp = Math.cos(player.pitch), sp = Math.sin(player.pitch);
+            let cy = Math.cos(player.yaw), sy = Math.sin(player.yaw);
+
+            player.x += (sy * cp) * player.speed;
+            player.y += sp * player.speed;
+            player.z += (-cy * cp) * player.speed;
+
+            // 3. HUD-ANZEIGEN AKTUALISIEREN
+            document.getElementById('val-speed').innerText = Math.round(Math.abs(player.speed) * 12500);
+            document.getElementById('val-thrust').innerText = Math.round((player.speed + 0.3) / 1.1 * 100);
+            document.getElementById('val-coords').innerText = `${Math.round(player.x)},${Math.round(player.z)}`;
+
+            // Canvas leeren
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
             let fov = 450;
 
-            // 2. Sterne der Skybox zeichnen
+            // 4. STERNE UND PLANETEN ROTIEREN & RENDERN (Inklusive Roll-Winkel)
+            const cr = Math.cos(player.roll), sr = Math.sin(player.roll);
+
+            function transformPoint(px, py, pz) {
+                let dx = px - player.x, dy = py - player.y, dz = pz - player.z;
+                // Yaw
+                let r1x = dx * Math.cos(-player.yaw) - dz * Math.sin(-player.yaw);
+                let r1z = dx * Math.sin(-player.yaw) + dz * Math.cos(-player.yaw);
+                // Pitch
+                let r2y = dy * Math.cos(-player.pitch) - r1z * Math.sin(-player.pitch);
+                let r2z = dy * Math.sin(-player.pitch) + r1z * Math.cos(-player.pitch);
+                // Roll (Schiff um Längsachse neigen)
+                let r3x = r1x * cr - r2y * sr;
+                let r3y = r1x * sr + r2y * cr;
+                return { x: r3x, y: r3y, z: r2z };
+            }
+
+            // Sterne zeichnen
             ctx.fillStyle = '#ffffff';
             stars.forEach(star => {
-                let dx = star.x - player.x;
-                let dy = star.y - player.y;
-                let dz = star.z - player.z;
-
-                // 3D-Kamera-Rotation anwenden
-                let r1x = dx * Math.cos(-player.yaw) - dz * Math.sin(-player.yaw);
-                let r1z = dx * Math.sin(-player.yaw) + dz * Math.cos(-player.yaw);
-                let r2y = dy * Math.cos(-player.pitch) - r1z * Math.sin(-player.pitch);
-                let r2z = dy * Math.sin(-player.pitch) + r1z * Math.cos(-player.pitch);
-
-                if (r2z > 1) {
-                    let sx = w / 2 + (r1x * fov) / r2z;
-                    let sy = h / 2 + (r2y * fov) / r2z;
-                    if (sx >= 0 && sx <= w && sy >= 0 && sy <= h) {
-                        ctx.fillRect(sx, sy, star.size, star.size);
-                    }
+                let t = transformPoint(star.x, star.y, star.z);
+                if (t.z > 1) {
+                    let sx = w / 2 + (t.x * fov) / t.z;
+                    let sy = h / 2 + (t.y * fov) / t.z;
+                    if (sx >= 0 && sx <= w && sy >= 0 && sy <= h) ctx.fillRect(sx, sy, star.size, star.size);
                 }
             });
 
-            // 3. Planeten transformieren und projizieren
+            // Planeten transformieren & sortieren
             const renderedPlanets = [];
-
             planets.forEach(p => {
-                let dx = p.x - player.x;
-                let dy = p.y - player.y;
-                let dz = p.z - player.z;
-
-                let r1x = dx * Math.cos(-player.yaw) - dz * Math.sin(-player.yaw);
-                let r1z = dx * Math.sin(-player.yaw) + dz * Math.cos(-player.yaw);
-                let r2y = dy * Math.cos(-player.pitch) - r1z * Math.sin(-player.pitch);
-                let r2z = dy * Math.sin(-player.pitch) + r1z * Math.cos(-player.pitch);
-
-                if (r2z > 2) {
-                    renderedPlanets.push({ p, rx: r1x, ry: r2y, rz: r2z });
-                }
+                let t = transformPoint(p.x, p.y, p.z);
+                if (t.z > 2) renderedPlanets.push({ p, t });
             });
+            renderedPlanets.sort((a, b) => b.t.z - a.t.z);
 
-            // Objekte nach Entfernung sortieren (Painter's Algorithm)
-            renderedPlanets.sort((a, b) => b.rz - a.rz);
-
-            // 4. Planeten zeichnen
-            renderedPlanets.forEach(({ p, rx, ry, rz }) => {
-                let scale = fov / rz;
-                let sx = w / 2 + rx * scale;
-                let sy = h / 2 + ry * scale;
+            // Planeten zeichnen
+            renderedPlanets.forEach(({ p, t }) => {
+                let scale = fov / t.z;
+                let sx = w / 2 + t.x * scale;
+                let sy = h / 2 + t.y * scale;
                 let radius = p.r * scale;
 
                 if (radius > 1) {
-                    // Planetensystemringe zeichnen falls aktiv
                     if (p.hasRing) {
                         ctx.beginPath();
-                        ctx.ellipse(sx, sy, radius * 1.8, radius * 0.4, Math.PI / 6, 0, 2 * Math.PI);
-                        ctx.strokeStyle = 'rgba(210, 190, 150, 0.5)';
-                        ctx.lineWidth = radius * 0.15;
+                        ctx.ellipse(sx, sy, radius * 1.9, radius * 0.4, player.roll + Math.PI/6, 0, 2 * Math.PI);
+                        ctx.strokeStyle = 'rgba(210, 190, 150, 0.4)';
+                        ctx.lineWidth = radius * 0.12;
                         ctx.stroke();
                     }
+                    ctx.beginPath(); ctx.arc(sx, sy, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = p.c; ctx.fill();
 
-                    // Planetenkörper zeichnen
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, radius, 0, 2 * Math.PI);
-                    ctx.fillStyle = p.c;
-                    ctx.fill();
-
-                    // Sphärische 3D-Lichtstrahlung simulieren
-                    let gradient = ctx.createRadialGradient(
-                        sx - radius * 0.2, sy - radius * 0.2, radius * 0.05,
-                        sx, sy, radius
-                    );
-                    gradient.addColorStop(0, 'rgba(255,255,255,0.25)');
-                    gradient.addColorStop(0.6, 'rgba(0,0,0,0)');
-                    gradient.addColorStop(1, 'rgba(0,0,0,0.85)');
-                    
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, radius, 0, 2 * Math.PI);
-                    ctx.fillStyle = gradient;
-                    ctx.fill();
+                    let grad = ctx.createRadialGradient(sx-radius*0.2, sy-radius*0.2, radius*0.05, sx, sy, radius);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.2)'); grad.addColorStop(1, 'rgba(0,0,0,0.85)');
+                    ctx.beginPath(); ctx.arc(sx, sy, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = grad; ctx.fill();
                 }
             });
 
+            // 5. LASER-GRAFIK RENDERN
+            ctx.lineWidth = 3;
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                let laser = lasers[i];
+                laser.t += 0.05; // Laser-Flugzeit-Fortschritt
+
+                // Startpunkt der Kanone (unten links/rechts am Cockpitrahmen emulieren)
+                let startX = (i % 2 === 0) ? w * 0.2 : w * 0.8;
+                let startY = h * 0.9;
+
+                // Berechne die aktuelle Position des Laserstrahls auf dem Weg zum Zielkreuz
+                let currentX = startX + (laser.tx - startX) * laser.t;
+                let currentY = startY + (laser.ty - startY) * laser.t;
+
+                // Laserstrahl zeichnen (Glow-Effekt)
+                ctx.beginPath();
+                ctx.moveTo(startX + (laser.tx - startX) * (laser.t - 0.15), startY + (laser.ty - startY) * (laser.t - 0.15));
+                ctx.lineTo(currentX, currentY);
+                ctx.strokeStyle = '#ff3333';
+                ctx.stroke();
+
+                // Löschen, wenn der Laser eingeschlagen/ausgelernt ist
+                if (laser.t >= 1.0) lasers.splice(i, 1);
+            }
+
+            // Cockpit-Rahmen-Verschönerung (Echtes Fadenkreuz im Zentrum zur Orientierung)
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(w/2, h/2, 60, 0, 2*Math.PI); ctx.stroke();
+
             requestAnimationFrame(loop);
         }
-
-        // Spielschleife starten
-        loop();
     </script>
 </body>
 </html>
