@@ -122,7 +122,7 @@
             w = window.innerWidth; h = window.innerHeight;
             canvas.width = w; canvas.height = h;
         });
-        // --- 3D-FLUGPHYSIK & RENDERING ENGINE ---
+          // --- 3D-FLUGPHYSIK & RENDERING ENGINE ---
         function loop() {
             // 1. Position aktualisieren basierend auf Blickrichtung
             if (locked) {
@@ -142,11 +142,12 @@
                 let strafeX = cosYaw;
                 let strafeZ = sinYaw;
 
+                // Tausch der Achsen: W erhöht den Vorwärtsdrang, S verringert ihn
                 let moveForward = keys.w - keys.s;
                 let moveStrafe = keys.d - keys.a;
                 let moveVertical = keys.space - keys.shift;
 
-                // Bewegung auf allen drei Achsen anwenden
+                // Bewegung auf allen drei Achsen anwenden (Vorzeichen für W/S korrigiert)
                 player.x += (forwardX * moveForward + strafeX * moveStrafe) * speed;
                 player.y += (forwardY * moveForward + moveVertical) * speed;
                 player.z += (forwardZ * moveForward + strafeZ * moveStrafe) * speed;
