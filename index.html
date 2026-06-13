@@ -33,69 +33,61 @@
     </div>
     <div id="crosshair"></div>
 
-    <script>
-        // INTEGRAL-BIBLIOTHEK: Three.js Minified (Core & PointerLock extrahiert & optimiert)
-        // Um Zeilenbegrenzungen zu wahren, nutzen wir eine kompakte Injektion per Data-URI
-        eval(atob('ZXhwb3J0cyA9IHt9Ow=='));
-        const l=document.createElement('script');
-        l.src='data:text/javascript;base64,ZXhwb3J0cyA9IHt9Ow==';
-        
-        // Da externe CDNs blockiert sind, bauen wir eine funktionale Mini-3D-Engine direkt nativ auf,
-        // um den Code-Rahmen nicht zu sprengen und absolute Lade-Garantie zu bieten.
-        // Das folgende Skript emuliert die 3D-Matrizen-Projektion direkt auf dem HTML5-Canvas.
+    <canvas id="gameCanvas"></canvas>
 
-        const canvas = document.createElement('canvas');
-        document.body.appendChild(canvas);
+    <script>
+        const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
         let w = window.innerWidth, h = window.innerHeight;
         canvas.width = w; canvas.height = h;
 
-        // Spieler-Status
-        const player = { x: 0, y: 2, z: 10, rx: 0, ry: 0, vy: 0, onGround: true };
-        const keys = { w:0, a:0, s:0, d:0 };
+        // Spieler-Status (Startposition und physikalische Werte)
+        const player = { x: 0, y: 1.8, z: 15, rx: 0, ry: 0, vy: 0, onGround: true };
+        const keys = { w: 0, a: 0, s: 0, d: 0 };
 
-        // Generiere Volumenkörper (Säulen, Blöcke)
+        // Zufällige Volumenkörper im Raum platzieren
         const objects = [];
         const colors = ['#ff4444', '#44ff44', '#4444ff', '#ff00ff', '#ffff00', '#00ffff'];
-        for(let i=0; i<30; i++) {
+        for(let i = 0; i < 40; i++) {
             objects.push({
-                x: (Math.random() - 0.5) * 60,
-                z: (Math.random() - 0.5) * 60,
-                w: 1 + Math.random() * 3,
-                h: 2 + Math.random() * 6,
-                d: 1 + Math.random() * 3,
+                x: (Math.random() - 0.5) * 80,
+                z: (Math.random() - 0.5) * 80,
+                w: 1.5 + Math.random() * 2,
+                h: 2.0 + Math.random() * 5,
+                d: 1.5 + Math.random() * 2,
                 c: colors[Math.floor(Math.random() * colors.length)]
             });
         }
 
-        // Steuerung aktivieren
+        // Maus-Sperre (Pointer Lock) steuern
         const inst = document.getElementById('instructions');
         let locked = false;
 
-        inst.addEventListener('click', () => {
-            canvas.requestPointerLock();
-        });
+        inst.addEventListener('click', () => { canvas.requestPointerLock(); });
 
         document.addEventListener('pointerlockchange', () => {
             locked = document.pointerLockElement === canvas;
             inst.style.display = locked ? 'none' : 'flex';
         });
 
+        // Mausbewegung für die Kamera (Blickrichtung)
         document.addEventListener('mousemove', (e) => {
             if (!locked) return;
-            player.ry -= e.movementX * 0.0025;
-            player.rx -= e.movementY * 0.0025;
-            player.rx = Math.max(-Math.PI/2, Math.min(Math.PI/2, player.rx));
+            player.ry -= e.movementX * 0.003; // Links/Rechts drehen
+            player.rx -= e.movementY * 0.003; // Hoch/Runter schauen
+            player.rx = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, player.rx));
         });
 
+        // Tastatur abfragen
         window.addEventListener('keydown', (e) => {
             if(e.code === 'KeyW') keys.w = 1;
             if(e.code === 'KeyS') keys.s = 1;
             if(e.code === 'KeyA') keys.a = 1;
             if(e.code === 'KeyD') keys.d = 1;
+            // Springen nach OBEN: Impuls erhöhen, wenn auf dem Boden gestanden wird
             if(e.code === 'Space' && player.onGround) {
-                player.vy = 0.25;
+                player.vy = 0.3; 
                 player.onGround = false;
             }
         });
@@ -112,81 +104,86 @@
             canvas.width = w; canvas.height = h;
         });
 
-        // Loop Variablen
+        // Game Loop
         function loop() {
-            // Physik-Update
+            // 1. PHYSIK & BEWEGUNG UPDATE
             if (locked) {
-                let speed = 0.12;
-                let moveX = keys.d - keys.a;
-                let moveZ = keys.w - keys.s;
+                let speed = 0.15;
+                let forward = keys.w - keys.s;
+                let strafe = keys.d - keys.a;
+
+                // Korrigierte Vektorberechnung: W geht immer exakt in Blickrichtung (ry)
+                player.x += (Math.sin(player.ry) * forward + Math.cos(player.ry) * strafe) * speed;
+                player.z -= (Math.cos(player.ry) * forward - Math.sin(player.ry) * strafe) * speed;
+            }
+
+            // Gravitation anwenden
+            if (!player.onGround) {
+                player.vy -= 0.015; // Zieht den Spieler pro Frame nach unten
+                player.y += player.vy;
                 
-                // Bewegung relativ zur Blickrichtung (Y-Achse)
-                player.x += (Math.sin(player.ry) * moveZ + Math.cos(player.ry) * moveX) * speed;
-                player.z += (Math.cos(player.ry) * moveZ - Math.sin(player.ry) * moveX) * speed;
+                // Landung auf dem Boden (y = 1.8 Augenhöhe)
+                if (player.y <= 1.8) {
+                    player.y = 1.8;
+                    player.vy = 0;
+                    player.onGround = true;
+                }
             }
 
-            // Schwerkraft
-            player.vy -= 0.01;
-            player.y += player.vy;
-            if(player.y <= 1.8) {
-                player.y = 1.8;
-                player.vy = 0;
-                player.onGround = true;
-            }
-
-            // RENDERING (Echte 3D-Software-Rasterisierung)
+            // 2. ZEICHNEN (RENDERER)
+            // Himmelhintergrund
             ctx.fillStyle = '#efd1b5';
             ctx.fillRect(0, 0, w, h);
 
-            // Horizont zeichnen (Boden)
+            // Dynamischer Horizont basierend auf dem vertikalen Blickwinkel (rx)
+            let pitchOffset = Math.tan(player.rx) * (h / 2);
             ctx.fillStyle = '#33aa33';
-            ctx.fillRect(0, h/2 + Math.tan(player.rx)*(h/2), w, h);
+            ctx.fillRect(0, h/2 + pitchOffset, w, h);
 
-            // Render-Pipeline für Volumenkörper
+            // Objekte transformieren und nach Tiefenabstand sortieren
             const renderedObjects = [];
 
             objects.forEach(obj => {
-                // Transformiere Koordinaten relativ zum Spieler
                 let dx = obj.x - player.x;
-                let dy = -player.y; // Objekt steht auf dem Boden
+                let dy = -player.y; 
                 let dz = obj.z - player.z;
 
-                // Rotation um die Y-Achse des Spielers anwenden
+                // Rotation um die Spielerachse anwenden
                 let rx = dx * Math.cos(-player.ry) - dz * Math.sin(-player.ry);
                 let rz = dx * Math.sin(-player.ry) + dz * Math.cos(-player.ry);
 
-                if (rz > 0.5) { // Nur zeichnen, wenn vor der Kamera
+                // Nur Objekte vor der Kamera berechnen
+                if (rz > 0.5) {
                     renderedObjects.push({ obj, rx, rz, dy });
                 }
             });
 
-            // Sortieren von hinten nach vorne (Painter's Algorithm)
+            // Painter's Algorithm: Weiter entfernte Objekte zuerst zeichnen
             renderedObjects.sort((a, b) => b.rz - a.rz);
 
+            // Volumenkörper zeichnen
             renderedObjects.forEach(({ obj, rx, rz, dy }) => {
-                // 3D-Projektion auf den 2D-Bildschirm
-                let fov = 400; 
+                let fov = 500; 
                 let scale = fov / rz;
 
-                // Ecken berechnen (vereinfacht als Boxen)
                 let screenX = w / 2 + rx * scale;
-                let screenY = h / 2 + (dy * scale) + Math.tan(player.rx)*(h/2);
+                let screenY = h / 2 + (dy * scale) + pitchOffset;
 
                 let boxW = obj.w * scale;
                 let boxH = obj.h * scale;
 
-                // Zeichne Schatten/Bodenkontakt
+                // Schattenwurf am Boden
                 ctx.fillStyle = 'rgba(0,0,0,0.15)';
-                ctx.fillRect(screenX - boxW/2, screenY + boxH - 5, boxW, 10);
+                ctx.fillRect(screenX - boxW / 2, h / 2 + (-player.y * scale) + pitchOffset, boxW, 10);
 
-                // Hauptkörper zeichnen
+                // Objektflächen zeichnen
                 ctx.fillStyle = obj.c;
-                ctx.fillRect(screenX - boxW/2, screenY, boxW, boxH);
+                ctx.fillRect(screenX - boxW / 2, screenY, boxW, boxH);
 
-                // Drahtgitter-Kontur für Tiefenwirkung
-                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(screenX - boxW/2, screenY, boxW, boxH);
+                // Struktur-Konturen für 3D-Gefühl
+                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(screenX - boxW / 2, screenY, boxW, boxH);
             });
 
             requestAnimationFrame(loop);
