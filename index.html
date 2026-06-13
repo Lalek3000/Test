@@ -3,292 +3,163 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Berlin Punk RTS</title>
+    <title>Mein 3D Web-Spiel</title>
     <style>
-        body {
-            margin: 0; padding: 0; background: #111; color: #ff0055;
-            font-family: 'Courier New', monospace; font-weight: bold;
-            overflow: hidden; user-select: none;
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #instructions {
+            position: absolute; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); color: white;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center; cursor: pointer;
         }
-        #ui {
-            position: absolute; top: 0; left: 0; width: 100vw;
-            background: rgba(0, 0, 0, 0.85); border-bottom: 4px solid #ff0055;
-            display: flex; justify-content: space-around; padding: 10px 0;
-            font-size: 16px; z-index: 10;
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 10px; height: 10px; background: white;
+            border-radius: 50%; transform: translate(-50%, -50%);
+            pointer-events: none; mix-blend-mode: difference;
         }
-        #controls {
-            position: absolute; bottom: 0; left: 0; width: 100vw;
-            background: rgba(0, 0, 0, 0.85); border-top: 4px solid #00ffcc;
-            display: flex; padding: 10px; gap: 10px; z-index: 10; box-sizing: border-box;
-        }
-        button {
-            background: #222; color: #00ffcc; border: 2px solid #00ffcc;
-            padding: 8px 15px; cursor: pointer; font-family: 'Courier New', monospace;
-            font-weight: bold; font-size: 14px;
-        }
-        button:hover { background: #00ffcc; color: #222; }
-        button:disabled { border-color: #555; color: #555; cursor: not-allowed; background: #111; }
-        canvas { display: block; image-rendering: pixelated; background: #2b2b2b; }
     </style>
 </head>
 <body>
+    <div id="instructions">
+        <h1>Klicken zum Spielen</h1>
+        <p>W, A, S, D = Bewegen | Maus = Umsehen | Leertaste = Springen</p>
+    </div>
+    <div id="crosshair"></div>
 
-<div id="ui">
-    <div>📍 Ort: Berlin SO36</div>
-    <div>🍺 Biere: <span id="beer-count">0</span> / 1000</div>
-    <div>🎸 Schrott: <span id="scrap-count">50</span></div>
-    <div>👥 Punks: <span id="punk-count">0</span></div>
-</div>
+    <!-- Three.js und Controls über CDNs laden -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://jsdelivr.net"></script>
 
-<div id="controls">
-    <button id="btn-punk" onclick="spawnWorker()">Punk anheuern (10 Schrott)</button>
-    <button id="btn-roadie" onclick="spawnMilitary()">Roadie bauen (20 Schrott)</button>
-    <button id="btn-stage" onclick="setBuildMode('stage')">Bühne bauen (30 Schrott)</button>
-</div>
+    <script>
+        // 1. Szene, Kamera und Renderer Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xefd1b5);
+        scene.fog = new THREE.FogExp2(0xefd1b5, 0.015);
 
-<canvas id="gameCanvas"></canvas>
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.y = 2; // Augenhöhe
 
-<script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
 
-let resources = { beer: 0, scrap: 50 };
-let selection = { startX: 0, startY: 0, endX: 0, endY: 0, isSelecting: false };
-let buildMode = null;
-let entities = [];
-let targetBeer = 1000;
-let gameOver = false;
-class Entity {
-    constructor(x, y, type, team) {
-        this.x = x;
-        this.y = y;
-        this.type = type;
-        this.team = team;
-        this.radius = 8;
-        if (type === 'stage' || type === 'beer_crate' || type === 'scrap_pile') {
-            this.radius = 20;
+        // 2. Lichtquellen
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // 3. Boden und Hindernisse (Volumenkörper)
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x33aa33 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Zufällige Formen platzieren
+        const geometries = [
+            new THREE.BoxGeometry(2, 2, 2),
+            new THREE.CylinderGeometry(1, 1, 3, 16),
+            new THREE.SphereGeometry(1.5, 32, 32)
+        ];
+        const colors = [0xff0000, 0x0000ff, 0xffff00, 0xff00ff];
+
+        for (let i = 0; i < 20; i++) {
+            const geo = geometries[Math.floor(Math.random() * geometries.length)];
+            const mat = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random() * colors.length)] });
+            const mesh = new THREE.Mesh(geo, mat);
+            
+            mesh.position.set((Math.random() - 0.5) * 40, 1.5, (Math.random() - 0.5) * 40);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
         }
-        this.selected = false;
-        this.target = null;
-        this.speed = 2;
-        this.hp = 50;
-        if (type === 'roadie') { this.hp = 150; }
-        if (type === 'stage') { this.hp = 500; }
-        this.maxHp = this.hp;
-        this.inventory = 0;
-        this.cooldown = 0;
-    }
 
-    update() {
-        if (this.hp <= 0) return;
-        if (this.cooldown > 0) this.cooldown--;
+        // 4. Steuerung (PointerLock)
+        const controls = new THREE.PointerLockControls(camera, document.body);
+        const instructions = document.getElementById('instructions');
 
-        if (this.target && (this.type === 'punk' || this.type === 'roadie' || this.type === 'spießer')) {
-            let dx = this.target.x - this.x;
-            let dy = this.target.y - this.y;
-            let dist = Math.hypot(dx, dy);
+        instructions.addEventListener('click', () => controls.lock());
+        controls.addEventListener('lock', () => instructions.style.display = 'none');
+        controls.addEventListener('unlock', () => instructions.style.display = 'flex');
 
-            if (dist > this.radius + this.target.radius) {
-                this.x += (dx / dist) * this.speed;
-                this.y += (dy / dist) * this.speed;
-            } else {
-                this.interact(this.target);
-            }
-        }
-    }
+        // 5. Tastatur-Abfrage & Physik-Variablen
+        const keys = { w: false, a: false, s: false, d: false, space: false };
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        let canJump = false;
+        let prevTime = performance.now();
 
-    interact(target) {
-        if (this.type === 'punk') {
-            if (target.type === 'scrap_pile' && this.inventory < 10) {
-                if (this.cooldown === 0) {
-                    this.inventory += 2;
-                    this.cooldown = 30;
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyW') keys.w = true;
+            if (e.code === 'KeyA') keys.a = true;
+            if (e.code === 'KeyS') keys.s = true;
+            if (e.code === 'KeyD') keys.d = true;
+            if (e.code === 'Space') { if (canJump) velocity.y += 15; canJump = false; }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW') keys.w = false;
+            if (e.code === 'KeyA') keys.a = false;
+            if (e.code === 'KeyS') keys.s = false;
+            if (e.code === 'KeyD') keys.d = false;
+        });
+
+        // 6. Game Loop (Animation)
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (controls.isLocked === true) {
+                const time = performance.now();
+                const delta = (time - prevTime) / 1000; // Zeit seit letztem Frame
+
+                // Dämpfung / Reibung für sanftes Stoppen
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+                velocity.y -= 9.8 * 4.0 * delta; // Schwerkraft (Erdbeschleunigung * Faktor)
+
+                // Richtung berechnen
+                direction.z = Number(keys.w) - Number(keys.s);
+                direction.x = Number(keys.d) - Number(keys.a);
+                direction.normalize();
+
+                // Bewegung anwenden
+                if (keys.w || keys.s) velocity.z -= direction.z * 100.0 * delta;
+                if (keys.a || keys.d) velocity.x -= direction.x * 100.0 * delta;
+
+                controls.moveRight(-velocity.x * delta);
+                controls.moveForward(-velocity.z * delta);
+
+                // Höhenbewegung (Springen & Fallen)
+                camera.position.y += (velocity.y * delta);
+
+                // Boden-Kollision (Simpel auf Höhe y = 2)
+                if (camera.position.y < 2) {
+                    velocity.y = 0;
+                    camera.position.y = 2;
+                    canJump = true;
                 }
-                if (this.inventory >= 10) {
-                    this.target = findClosest(this, 'stage');
-                }
-            } else if (target.type === 'stage' && this.inventory > 0) {
-                resources.scrap += this.inventory;
-                this.inventory = 0;
-                this.target = findClosest(this, 'scrap_pile');
-            } else if (target.type === 'beer_crate' && this.cooldown === 0) {
-                resources.beer += 5;
-                this.cooldown = 40;
-                if (resources.beer >= targetBeer) {
-                    gameOver = true;
-                }
+
+                prevTime = time;
             }
+
+            renderer.render(scene, camera);
         }
-        if (this.type === 'roadie' && target.team === 'enemy' && this.cooldown === 0) {
-            target.hp -= 15;
-            this.cooldown = 25;
-            if (target.hp  0) {
-            let dist = Math.hypot(e.x - entity.x, e.y - entity.y);
-            if (dist < minDist) {
-                minDist = dist;
-                closest = e;
-            }
-        }
-    }
-    return closest;
-}
-window.addEventListener('mousedown', function(e) {
-    if (e.clientY < 50 || e.clientY > window.innerHeight - 60) return;
-    if (buildMode) {
-        if (resources.scrap >= 30) {
-            let bühne = new Entity(e.clientX, e.clientY, 'stage', 'player');
-            entities.push(bühne);
-            resources.scrap -= 30;
-        }
-        buildMode = null;
-        return;
-    }
-    if (e.button === 0) {
-        selection.isSelecting = true;
-        selection.startX = e.clientX;
-        selection.startY = e.clientY;
-        selection.endX = e.clientX;
-        selection.endY = e.clientY;
-    } else if (e.button === 2) {
-        e.preventDefault();
-        let clicked = null;
-        for (let ent of entities) {
-            if (Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 15) {
-                clicked = ent;
-                break;
-            }
-        }
-        for (let ent of entities) {
-            if (ent.selected && ent.team === 'player') {
-                if (clicked) {
-                    ent.target = clicked;
-                } else {
-                    let zielX = e.clientX;
-                    let zielY = e.clientY;
-                    let wegpunkt = { x: zielX, y: zielY, radius: 2, team: 'neutral' };
-                    ent.target = wegpunkt;
-                }
-            }
-        }
-    }
-});
 
-window.addEventListener('mousemove', function(e) {
-    if (selection.isSelecting) {
-        selection.endX = e.clientX;
-        selection.endY = e.clientY;
-    }
-});
+        // Fenstergröße anpassen
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
 
-window.addEventListener('mouseup', function(e) {
-    if (e.button === 0 && selection.isSelecting) {
-        selection.isSelecting = false;
-        let xMin = Math.min(selection.startX, selection.endX);
-        let xMax = Math.max(selection.startX, selection.endX);
-        let yMin = Math.min(selection.startY, selection.endY);
-        let yMax = Math.max(selection.startY, selection.endY);
-        let any = false;
-        
-        for (let ent of entities) {
-            if (ent.team === 'player' && ent.x >= xMin && ent.x <= xMax && ent.y >= yMin && ent.y <= yMax) {
-                ent.selected = true;
-                any = true;
-            }
-        }
-        if (!any) {
-            for (let ent of entities) {
-                if (Math.hypot(ent.x - e.clientX, ent.y - e.clientY) < ent.radius + 10 && ent.team === 'player') {
-                    ent.selected = true;
-                } else {
-                    ent.selected = false;
-                }
-            }
-        }
-    }
-});
-window.addEventListener('contextmenu', function(e) { e.preventDefault(); });
-
-function setBuildMode(mode) { buildMode = mode; }
-function spawnWorker() { if (resources.scrap >= 10) { resources.scrap -= 10; let p = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'punk', 'player'); entities.push(p); } }
-function spawnMilitary() { if (resources.scrap >= 20) { resources.scrap -= 20; let r = new Entity(canvas.width/2 + (Math.random()*40-20), canvas.height/2 + (Math.random()*40-20), 'roadie', 'player'); r.speed = 2.5; entities.push(r); } }
-
-let startBühne = new Entity(canvas.width / 2, canvas.height / 2, 'stage', 'player');
-let schrott1 = new Entity(150, 200, 'scrap_pile', 'neutral');
-let bier1 = new Entity(canvas.width - 150, 250, 'beer_crate', 'neutral');
-let bier2 = new Entity(200, canvas.height - 200, 'beer_crate', 'neutral');
-
-entities.push(startBühne);
-entities.push(schrott1);
-entities.push(bier1);
-entities.push(bier2);
-
-setInterval(function() {
-    if (gameOver) return;
-    let sides = [{x: Math.random()*canvas.width, y: -20}, {x: -20, y: Math.random()*canvas.height}, {x: canvas.width+20, y: Math.random()*canvas.height}];
-    let spawn = sides[Math.floor(Math.random() * sides.length)];
-    let enemy = new Entity(spawn.x, spawn.y, 'spießer', 'enemy');
-    enemy.speed = 1.2;
-    let zielBühne = findClosest(enemy, 'stage');
-    if (zielBühne) { enemy.target = zielBühne; }
-    entities.push(enemy);
-}, 8000);
-
-setInterval(function() {
-    for (let ent of entities) {
-        if (ent.type === 'roadie' && (!ent.target || ent.target.team !== 'enemy')) {
-            let en = findClosest(ent, 'spießer');
-            if (en && Math.hypot(en.x - ent.x, en.y - ent.y) < 250) { ent.target = en; }
-        }
-    }
-}, 1000);
-
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
-    for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
-    for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
-
-    let activeEntities = [];
-    for (let e of entities) {
-        if (e.hp > 0 || e.type === 'scrap_pile' || e.type === 'beer_crate') {
-            activeEntities.push(e);
-        }
-    }
-    entities = activeEntities;
-
-    for (let ent of entities) {
-        if (ent.type === 'stage') { ctx.fillStyle = "#222"; ctx.fillRect(ent.x - 25, ent.y - 25, 50, 50); ctx.strokeStyle = "#ff0055"; ctx.lineWidth = 4; ctx.strokeRect(ent.x - 25, ent.y - 25, 50, 50); ctx.fillStyle = "#ff0055"; ctx.font = "10px monospace"; ctx.fillText("BÜHNE", ent.x - 15, ent.y + 4); } 
-        else if (ent.type === 'scrap_pile') { ctx.fillStyle = "#00ffcc"; ctx.beginPath(); ctx.arc(ent.x, ent.y, ent.radius, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("METALL", ent.x - 18, ent.y + 4); } 
-        else if (ent.type === 'beer_crate') { ctx.fillStyle = "#ffcc00"; ctx.fillRect(ent.x - 15, ent.y - 15, 30, 30); ctx.fillStyle = "#000"; ctx.font = "10px monospace"; ctx.fillText("BIER", ent.x - 11, ent.y + 4); } 
-        else if (ent.type === 'punk') { ctx.fillStyle = ent.selected ? "#00ffcc" : "#ff0055"; ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20); ctx.fillStyle = "#ff0055"; ctx.fillRect(ent.x - 2, ent.y - 18, 4, 6); } 
-        else if (ent.type === 'roadie') { ctx.fillStyle = ent.selected ? "#00ffcc" : "#33ff33"; ctx.fillRect(ent.x - 8, ent.y - 14, 16, 24); ctx.fillStyle = "#000"; ctx.fillRect(ent.x - 4, ent.y - 8, 8, 12); } 
-        else if (ent.type === 'spießer') { ctx.fillStyle = "#ffffff"; ctx.fillRect(ent.x - 6, ent.y - 12, 12, 20); ctx.fillStyle = "#999999"; ctx.fillRect(ent.x + 4, ent.y, 4, 6); }
-        if (ent.hp < ent.maxHp && ent.maxHp > 0) { ctx.fillStyle = "red"; ctx.fillRect(ent.x - 15, ent.y - 25, 30, 4); ctx.fillStyle = "green"; ctx.fillRect(ent.x - 15, ent.y - 25, (ent.hp / ent.maxHp) * 30, 4); }
-    }
-
-    if (selection.isSelecting) { ctx.strokeStyle = "#00ffcc"; ctx.lineWidth = 1; ctx.strokeRect(selection.startX, selection.startY, selection.endX - selection.startX, selection.endY - selection.startY); }
-    
-    let totalPunks = 0;
-    for (let ent of entities) { if (ent.team === 'player' && (ent.type === 'punk' || ent.type === 'roadie')) totalPunks++; }
-    
-    document.getElementById("beer-count").innerText = resources.beer;
-    document.getElementById("scrap-count").innerText = resources.scrap;
-    document.getElementById("punk-count").innerText = totalPunks;
-    document.getElementById("btn-punk").disabled = (resources.scrap < 10);
-    document.getElementById("btn-roadie").disabled = (resources.scrap < 20);
-    document.getElementById("btn-stage").disabled = (resources.scrap < 30);
-
-    if (gameOver) {
-        ctx.fillStyle = "rgba(0,0,0,0.9)"; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle = "#00ffcc"; ctx.font = "40px Courier New"; ctx.fillText("PROST! 1000 BIERE GEZAPFT!", canvas.width/2 - 250, canvas.height/2);
-        return;
-    }
-    requestAnimationFrame(draw);
-}
-setInterval(function() { for (let e of entities) { e.update(); } }, 30);
-requestAnimationFrame(draw);
-</script>
+        animate();
+    </script>
 </body>
 </html>
