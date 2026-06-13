@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sci-Fi Weltraum-Simulator v3</title>
+    <title>Sci-Fi Weltraum-Simulator v4</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Courier New', monospace; background: #000; user-select: none; }
         #canvas-container { position: relative; width: 100vw; height: 100vh; cursor: none; }
@@ -24,7 +24,7 @@
         #hud-left { bottom: 40px; left: 40px; width: 180px; }
         #hud-right { bottom: 40px; right: 40px; width: 180px; text-align: right; }
         
-        /* Fadenkreuz folgt der Maus korrekt */
+        /* Fadenkreuz folgt der Maus */
         #crosshair {
             position: absolute; width: 34px; height: 34px;
             border: 2px solid #ff3333; border-radius: 50%;
@@ -49,10 +49,10 @@
 </head>
 <body>
     <div id="intro">
-        <h1>HEAVY INTERCEPTOR COCKPIT</h1>
-        <p>W / S = Nicken | Q / E = Gieren (Dreht sich mit der Ansicht!)</p>
-        <p>A / D = Rollen | SCHWERE TRÄGHEIT AKTIV</p>
-        <p>LEERTASTE = Hauptantrieb | SHIFT = Bremsen</p>
+        <h1>ADVANCED FLIGHT DYNAMICS ENGAGED</h1>
+        <p>S = Nase hoch | W = Nase runter (Invertiertes Jet-Nicken)</p>
+        <p>Q / E = Gieren | A / D = Rollen (Volle 3D-Looping-Stabilität)</p>
+        <p>LEERTASTE = Schub dauerhaft erhöhen (+) | SHIFT = Schub drosseln (-)</p>
         <p>MAUS = Fadenkreuz bewegen | LINKSKLICK = Dual-Laser abfeuern</p>
         <button class="btn" onclick="startSim()">SYSTEME STARTEN</button>
     </div>
@@ -83,12 +83,15 @@
         let simRunning = false;
         let mouseX = w / 2, mouseY = h / 2;
 
-        // Spieler-Physik-Status
+        // Spieler-Physik-Status (Position und Richtungsvektoren für fehlerfreie Loopings)
         const player = {
             x: 0, y: 0, z: 50,
-            pitch: 0, yaw: 0, roll: 0,
+            // Vorwärts-, Aufwärts- und Rechts-Vektoren definieren die exakte Schiffsausrichtung im 3D-Raum
+            f: {x: 0, y: 0, z: -1},
+            u: {x: 0, y: 1, z: 0},
+            r: {x: 1, y: 0, z: 0},
             vPitch: 0, vYaw: 0, vRoll: 0,
-            speed: 0, targetSpeed: 0
+            speed: 0, targetSpeed: 0 // TargetSpeed wird nun permanent gespeichert
         };
 
         const keys = { w:0, s:0, a:0, d:0, q:0, e:0, space:0, shift:0 };
@@ -108,7 +111,7 @@
             });
         }
 
-        // Fadenkreuz-Maussteuerung FIX
+        // Fadenkreuz-Maussteuerung
         document.getElementById('canvas-container').addEventListener('mousemove', (e) => {
             mouseX = e.clientX; 
             mouseY = e.clientY;
@@ -147,86 +150,121 @@
             w = window.innerWidth; h = window.innerHeight;
             canvas.width = w; canvas.height = h;
         });
-        // --- PHYSIK (DYNAMISCHE ROTATION & SCHWERE TRÄGHEIT) ---
+        // Hilfsfunktion: Vektor um Achse rotieren (Rodriguez-Formel für driftfreie Loopings)
+        function rotateVector(v, axis, angle) {
+            let cosA = Math.cos(angle), sinA = Math.sin(angle);
+            let dot = v.x * axis.x + v.y * axis.y + v.z * axis.z;
+            let crossX = axis.y * v.z - axis.z * v.y;
+            let crossY = axis.z * v.x - axis.x * v.z;
+            let crossZ = axis.x * v.y - axis.y * v.x;
+            return {
+                x: v.x * cosA + crossX * sinA + axis.x * dot * (1 - cosA),
+                y: v.y * cosA + crossY * sinA + axis.y * dot * (1 - cosA),
+                z: v.z * cosA + crossZ * sinA + axis.z * dot * (1 - cosA)
+            };
+        }
+
+        // --- PHYSIK & RENDERING ENGINE ---
         function loop() {
             if (!simRunning) return;
 
-            // Extrem hohe Trägheits-Koeffizienten für zähflüssigen Raumschiffdrift
+            // Stark ausgeprägte Trägheit
             const rAccel = 0.0006; 
             const rFriction = 0.98; 
 
-            // Mathematische Achsen-Transformation:
-            // Wir berechnen, wie viel "Nicken" und "Gieren" relativ zum aktuellen Roll-Winkel (player.roll) wirken müssen.
-            let cosR = Math.cos(player.roll);
-            let sinR = Math.sin(player.roll);
+            // 1. SCHUBREGLER-STEUERUNG (Permanent veränderbar)
+            if (keys.space) {
+                player.targetSpeed = Math.min(1.2, player.targetSpeed + 0.01); // Schub hochregeln
+            }
+            if (keys.shift) {
+                player.targetSpeed = Math.max(-0.3, player.targetSpeed - 0.01); // Schub runterregeln / Bremsen
+            }
 
-            let localPitchInput = keys.w - keys.s;
-            let localYawInput = keys.q - keys.e;
+            // Träges Anpassen der tatsächlichen Geschwindigkeit an den gesetzten Schubregler
+            player.speed += (player.targetSpeed - player.speed) * 0.02;
 
-            // Eingaben transformieren, damit W/S immer der lokalen Cockpithöhe folgt!
-            let worldPitchAccel = localPitchInput * cosR - localYawInput * sinR;
-            let worldYawAccel = localPitchInput * sinR + localYawInput * cosR;
+            // 2. INVERTAGE FLUGSTEUERUNG & LOOPING-STABILISIERUNG (Matrixfrei über Richtungsvektoren)
+            // W drückt Nase RUNTER, S zieht Nase HOCH (Invertiert für Jet-Feeling)
+            let pitchInput = keys.s - keys.w; 
+            let yawInput = keys.q - keys.e;
 
-            player.vPitch += worldPitchAccel * rAccel;
-            player.vYaw += worldYawAccel * rAccel;
-
+            player.vPitch += pitchInput * rAccel;
+            player.vYaw += yawInput * rAccel;
             if (keys.a) player.vRoll -= 0.0012;
             if (keys.d) player.vRoll += 0.0012;
 
-            player.vPitch *= rFriction;
-            player.vYaw *= rFriction;
-            player.vRoll *= 0.94;
+            player.vPitch *= rFriction; player.vYaw *= rFriction; player.vRoll *= 0.94;
 
-            player.pitch += player.vPitch;
-            player.yaw += player.vYaw;
-            player.roll += player.vRoll;
+            // Vektoren inkrementell entlang der Schiffsachsen rotieren (Kein Ausschlagen bei Loopings!)
+            if (Math.abs(player.vPitch) > 0.00001) {
+                player.f = rotateVector(player.f, player.r, player.vPitch);
+                player.u = rotateVector(player.u, player.r, player.vPitch);
+            }
+            if (Math.abs(player.vYaw) > 0.00001) {
+                player.f = rotateVector(player.f, player.u, player.vYaw);
+                player.r = rotateVector(player.r, player.u, player.vYaw);
+            }
+            if (Math.abs(player.vRoll) > 0.00001) {
+                player.r = rotateVector(player.r, player.f, player.vRoll);
+                player.u = rotateVector(player.u, player.f, player.vRoll);
+            }
 
-            // Vorwärtsschub berechnen
-            if (keys.space) player.targetSpeed = 1.0;
-            else if (keys.shift) player.targetSpeed = -0.2;
-            else player.targetSpeed *= 0.99; 
+            // Vektoren re-normalisieren, um mathematische Rundungsfehler zu vermeiden
+            let magF = Math.sqrt(player.f.x**2 + player.f.y**2 + player.f.z**2);
+            player.f = {x: player.f.x/magF, y: player.f.y/magF, z: player.f.z/magF};
+            
+            // Kreuzprodukt für orthogonale Ausrichtung
+            player.r = {
+                x: player.f.y * player.u.z - player.f.z * player.u.y,
+                y: player.f.z * player.u.x - player.f.x * player.u.z,
+                z: player.f.x * player.u.y - player.f.y * player.u.x
+            };
+            let magR = Math.sqrt(player.r.x**2 + player.r.y**2 + player.r.z**2);
+            player.r = {x: player.r.x/magR, y: player.r.y/magR, z: player.r.z/magR};
 
-            player.speed += (player.targetSpeed - player.speed) * 0.015; // Noch trägere Beschleunigung
+            player.u = {
+                x: player.r.y * player.f.z - player.r.z * player.f.y,
+                y: player.r.z * player.f.x - player.r.x * player.f.z,
+                z: player.r.x * player.f.y - player.r.y * player.f.x
+            };
 
-            // Positions-Update im All basierend auf echten 3D-Flugvektoren
-            let cp = Math.cos(player.pitch), sp = Math.sin(player.pitch);
-            let cy = Math.cos(player.yaw), sy = Math.sin(player.yaw);
-
-            player.x += (sy * cp) * player.speed;
-            player.y += sp * player.speed;
-            player.z += (-cy * cp) * player.speed;
+            // Bewegung entlang des Vorwärtsvektors anwenden
+            player.x += player.f.x * player.speed;
+            player.y += player.f.y * player.speed;
+            player.z += player.f.z * player.speed;
 
             // HUD aktualisieren
             document.getElementById('val-speed').innerText = Math.round(Math.abs(player.speed) * 21500);
-            document.getElementById('val-thrust').innerText = Math.round((player.speed + 0.2) / 1.2 * 100);
+            // Prozentuale Anzeige des Schubreglers (von -30% bis +100%)
+            document.getElementById('val-thrust').innerText = Math.round(((player.targetSpeed + 0.3) / 1.5) * 100);
             document.getElementById('val-coords').innerText = `${Math.round(player.x/2)},${Math.round(player.z/2)}`;
 
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, w, h);
 
             let fov = 450;
-            const cr = Math.cos(player.roll), sr = Math.sin(player.roll);
 
+            // 3. 3D-PROJEKTION TRANSFORMATION (Relativ zur Blick-Kameraausrichtung)
             function transformPoint(px, py, pz) {
                 let dx = px - player.x, dy = py - player.y, dz = pz - player.z;
-                let r1x = dx * Math.cos(-player.yaw) - dz * Math.sin(-player.yaw);
-                let r1z = dx * Math.sin(-player.yaw) + dz * Math.cos(-player.yaw);
-                let r2y = dy * Math.cos(-player.pitch) - r1z * Math.sin(-player.pitch);
-                let r2z = dy * Math.sin(-player.pitch) + r1z * Math.cos(-player.pitch);
-                return { x: r1x * cr - r2y * sr, y: r1x * sr + r2y * cr, z: r2z };
+                // Punkt auf die lokalen Schiffsachsen (Rechts, Hoch, Vorwärts) projizieren
+                let rx = dx * player.r.x + dy * player.r.y + dz * player.r.z;
+                let ry = dx * player.u.x + dy * player.u.y + dz * player.u.z;
+                let rz = dx * player.f.x + dy * player.f.y + dz * player.f.z;
+                return { x: rx, y: ry, z: rz };
             }
 
             // Sterne zeichnen
             ctx.fillStyle = '#ffffff';
             stars.forEach(star => {
                 let t = transformPoint(star.x, star.y, star.z);
-                if (t.z > 1) {
-                    let sx = w / 2 + (t.x * fov) / t.z, sy = h / 2 + (t.y * fov) / t.z;
+                if (t.z > 1) { // Vor dem Schiff
+                    let sx = w / 2 + (t.x * fov) / t.z, sy = h / 2 - (t.y * fov) / t.z;
                     if (sx >= 0 && sx <= w && sy >= 0 && sy <= h) ctx.fillRect(sx, sy, star.size, star.size);
                 }
             });
 
-            // Planeten transformieren & ordnen
+            // Planeten transformieren & sortieren
             const renderedPlanets = [];
             planets.forEach(p => {
                 let t = transformPoint(p.x, p.y, p.z);
@@ -236,10 +274,13 @@
 
             // Planeten zeichnen
             renderedPlanets.forEach(({ p, t }) => {
-                let scale = fov / t.z, sx = w / 2 + t.x * scale, sy = h / 2 + t.y * scale, radius = p.r * scale;
+                let scale = fov / t.z, sx = w / 2 + t.x * scale, sy = h / 2 - t.y * scale, radius = p.r * scale;
                 if (radius > 1) {
                     if (p.hasRing) {
-                        ctx.beginPath(); ctx.ellipse(sx, sy, radius * 1.9, radius * 0.4, player.roll + Math.PI/6, 0, 2 * Math.PI);
+                        ctx.beginPath();
+                        // Ringneigung rotiert jetzt mathematisch mit dem Sichtfeld mit
+                        let rollAngle = Math.atan2(player.r.y, player.r.x);
+                        ctx.ellipse(sx, sy, radius * 1.9, radius * 0.4, -rollAngle + Math.PI/6, 0, 2 * Math.PI);
                         ctx.strokeStyle = 'rgba(210, 190, 150, 0.4)'; ctx.lineWidth = radius * 0.12; ctx.stroke();
                     }
                     ctx.beginPath(); ctx.arc(sx, sy, radius, 0, 2 * Math.PI); ctx.fillStyle = p.c; ctx.fill();
@@ -249,7 +290,7 @@
                 }
             });
 
-            // --- LASERSTRAHLEN RENDERN ---
+            // 4. LASERSTRAHLEN RENDERN
             ctx.lineWidth = 4;
             for (let i = lasers.length - 1; i >= 0; i--) {
                 let l = lasers[i];
@@ -267,54 +308,37 @@
                 if (l.t >= 1.0) lasers.splice(i, 1);
             }
 
-            // --- PLASTISCHE 3D-LASERKANONEN ---
-            const drawHeavyGun = (baseX, baseY, isLeft) => {
+            // 5. PLASTISCHE 3D-LASERKANONEN RENDERN
+            const drawHeavyGun = (baseX, baseY) => {
                 ctx.save();
                 ctx.translate(baseX, baseY);
-                
                 let angle = Math.atan2(mouseY - baseY, mouseX - baseX);
                 ctx.rotate(angle);
 
-                // 1. Schattierte Gelenkbasis (3D-Tiefe durch Gradients)
                 let baseGrad = ctx.createLinearGradient(-15, -25, -15, 25);
                 baseGrad.addColorStop(0, '#3a3a3a'); baseGrad.addColorStop(0.5, '#1e1e1e'); baseGrad.addColorStop(1, '#0f0f0f');
-                ctx.fillStyle = baseGrad;
-                ctx.strokeStyle = '#00ffcc';
-                ctx.lineWidth = 2;
+                ctx.fillStyle = baseGrad; ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.arc(-10, 0, 22, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
 
-                // 2. Massives Geschützgehäuse
                 let bodyGrad = ctx.createLinearGradient(-10, -15, 25, 15);
                 bodyGrad.addColorStop(0, '#555555'); bodyGrad.addColorStop(0.4, '#2d2d2d'); bodyGrad.addColorStop(1, '#151515');
-                ctx.fillStyle = bodyGrad;
-                ctx.fillRect(-5, -14, 35, 28);
-                ctx.strokeRect(-5, -14, 35, 28);
+                ctx.fillStyle = bodyGrad; ctx.fillRect(-5, -14, 35, 28); ctx.strokeRect(-5, -14, 35, 28);
 
-                // 3. Hydraulischer Doppel-Lauf (Räumlich versetzt)
                 let barrelGrad = ctx.createLinearGradient(25, -6, 25, 6);
                 barrelGrad.addColorStop(0, '#777777'); barrelGrad.addColorStop(0.5, '#3a3a3a'); barrelGrad.addColorStop(1, '#222222');
                 ctx.fillStyle = barrelGrad;
+                ctx.fillRect(25, -9, 45, 6); ctx.strokeRect(25, -9, 45, 6);
+                ctx.fillRect(25, 3, 45, 6); ctx.strokeRect(25, 3, 45, 6);
                 
-                // Oberer und unterer Lauf für echtes Doppelgeschütz-Feeling
-                ctx.fillRect(25, -9, 45, 6);
-                ctx.strokeRect(25, -9, 45, 6);
-                ctx.fillRect(25, 3, 45, 6);
-                ctx.strokeRect(25, 3, 45, 6);
-                
-                // Mündungsfeuer-Emitter (Glühendes Rot-Orange)
-                ctx.fillStyle = '#ff4500';
-                ctx.fillRect(70, -8, 5, 4);
-                ctx.fillRect(70, 4, 5, 4);
-                
+                ctx.fillStyle = '#ff4500'; ctx.fillRect(70, -8, 5, 4); ctx.fillRect(70, 4, 5, 4);
                 ctx.restore();
             };
 
-            drawHeavyGun(w * 0.15, h * 0.92, true);
-            drawHeavyGun(w * 0.85, h * 0.92, false);
+            drawHeavyGun(w * 0.15, h * 0.92);
+            drawHeavyGun(w * 0.85, h * 0.92);
 
             // Statisches HUD-Visier
-            ctx.strokeStyle = 'rgba(0, 255, 204, 0.15)';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(0, 255, 204, 0.15)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.arc(w/2, h/2, 50, 0, 2*Math.PI); ctx.stroke();
 
             requestAnimationFrame(loop);
