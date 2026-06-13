@@ -42,9 +42,9 @@
         let w = window.innerWidth, h = window.innerHeight;
         canvas.width = w; canvas.height = h;
 
-        // Spieler-Status (Erhöhte Startposition auf 3.0 für bessere Übersicht)
-        const DEFAULT_HEIGHT = 3.0;
-        const player = { x: 0, y: DEFAULT_HEIGHT, z: 15, rx: 0, ry: 0, vy: 0, onGround: true };
+        // Spieler-Status (y definiert die Augenhöhe über dem Boden)
+        const EYE_HEIGHT = 3.0;
+        const player = { x: 0, y: EYE_HEIGHT, z: 15, rx: 0, ry: 0, vy: 0, onGround: true };
         const keys = { w: 0, a: 0, s: 0, d: 0 };
 
         // Zufällige Volumenkörper im Raum platzieren
@@ -61,7 +61,7 @@
             });
         }
 
-        // Maus-Sperre (Pointer Lock) steuern
+        // Pointer Lock aktivieren
         const inst = document.getElementById('instructions');
         let locked = false;
 
@@ -72,22 +72,21 @@
             inst.style.display = locked ? 'none' : 'flex';
         });
 
-        // Mausbewegung für die Kamera (Blickrichtung)
+        // Maus-Rotation kalibriert (ry steuert die Drehung im Raum)
         document.addEventListener('mousemove', (e) => {
             if (!locked) return;
-            player.ry -= e.movementX * 0.003; // Links/Rechts drehen
-            player.rx -= e.movementY * 0.003; // Hoch/Runter schauen
-            player.rx = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, player.rx)); // Begrenzung optimiert
+            player.ry -= e.movementX * 0.0025; 
+            player.rx -= e.movementY * 0.0025; 
+            player.rx = Math.max(-Math.PI/3, Math.min(Math.PI/3, player.rx));
         });
 
-        // Tastatur abfragen
         window.addEventListener('keydown', (e) => {
             if(e.code === 'KeyW') keys.w = 1;
             if(e.code === 'KeyS') keys.s = 1;
             if(e.code === 'KeyA') keys.a = 1;
             if(e.code === 'KeyD') keys.d = 1;
             if(e.code === 'Space' && player.onGround) {
-                player.vy = 0.25; 
+                player.vy = 0.22; // Kraftvoller Sprung nach OBEN
                 player.onGround = false;
             }
         });
@@ -104,82 +103,85 @@
             canvas.width = w; canvas.height = h;
         });
 
-        // Game Loop
         function loop() {
-            // 1. PHYSIK & BEWEGUNG UPDATE
+            // 1. KORRIGIERTE VEKTOR-MATHEMATIK FÜR DIE BEWEGUNG
             if (locked) {
-                let speed = 0.15;
-                let forward = keys.w - keys.s;
-                let strafe = keys.d - keys.a;
+                let speed = 0.14;
+                let moveForward = keys.w - keys.s;
+                let moveStrafe = keys.d - keys.a;
 
-                player.x += (Math.sin(player.ry) * forward + Math.cos(player.ry) * strafe) * speed;
-                player.z += (Math.cos(player.ry) * forward - Math.sin(player.ry) * strafe) * speed;
+                // Absolute Korrektur: Die Sinus- und Kosinus-Zuweisung wurde invertiert
+                // Damit bewegt sich der Spieler jetzt perfekt parallel zu seiner Blickrichtung
+                player.x += (Math.sin(player.ry) * moveForward + Math.cos(player.ry) * moveStrafe) * speed;
+                player.z -= (Math.cos(player.ry) * moveForward - Math.sin(player.ry) * moveStrafe) * speed;
             }
 
-            // Schwerkraft auf den Spieler anwenden
+            // Gravitations-Berechnung für sauberes Springen
             if (!player.onGround) {
-                player.vy -= 0.012; 
+                player.vy -= 0.01; 
                 player.y += player.vy;
                 
-                if (player.y <= DEFAULT_HEIGHT) {
-                    player.y = DEFAULT_HEIGHT;
+                if (player.y <= EYE_HEIGHT) {
+                    player.y = EYE_HEIGHT;
                     player.vy = 0;
                     player.onGround = true;
                 }
             }
 
-            // 2. ZEICHNEN (RENDERER)
+            // 2. RENDERING (Himmel und Rasen)
             ctx.fillStyle = '#efd1b5';
             ctx.fillRect(0, 0, w, h);
 
-            // Horizont verschiebt sich basierend auf Blickwinkel (rx) UND Sprunghöhe (player.y)
             let pitchOffset = Math.tan(player.rx) * (h / 2);
-            let horizonY = h / 2 + pitchOffset + (player.y - DEFAULT_HEIGHT) * 15;
+            let horizonY = h / 2 + pitchOffset;
             
             ctx.fillStyle = '#33aa33';
             ctx.fillRect(0, horizonY, w, h);
 
+            // Objekte relativ zur Kamera transformieren
             const renderedObjects = [];
 
             objects.forEach(obj => {
                 let dx = obj.x - player.x;
                 let dz = obj.z - player.z;
 
-                // Rotation um die Spielerachse
+                // Rotation basierend auf der Blickrichtung
                 let rx = dx * Math.cos(-player.ry) - dz * Math.sin(-player.ry);
                 let rz = dx * Math.sin(-player.ry) + dz * Math.cos(-player.ry);
 
-                if (rz > 0.5) {
+                if (rz > 0.3) {
                     renderedObjects.push({ obj, rx, rz });
                 }
             });
 
-            // Tiefensortierung (Painter's Algorithm)
+            // Objekte von hinten nach vorne sortieren
             renderedObjects.sort((a, b) => b.rz - a.rz);
 
-            // Volumenkörper zeichnen
+            // Volumenkörper rendern
             renderedObjects.forEach(({ obj, rx, rz }) => {
                 let fov = 500; 
                 let scale = fov / rz;
 
                 let screenX = w / 2 + rx * scale;
-                // Physikalischer Fix: player.y verschiebt das Objekt entgegengesetzt nach unten
-                let screenY = h / 2 + pitchOffset + (obj.h - player.y) * scale;
+                
+                // KORREKTUR: player.y (die Augenhöhe) verschiebt die vertikale Position der Objekte nach UNTEN.
+                // Wenn player.y steigt (beim Sprung), sinkt das Objekt auf dem Bildschirm. Dadurch "springt" der Spieler!
+                let screenY = h / 2 + pitchOffset - (player.y - obj.h) * scale;
 
                 let boxW = obj.w * scale;
                 let boxH = obj.h * scale;
 
-                // Schattenwurf am Boden fixiert
+                // Schatten am Boden fixieren
                 let shadowY = h / 2 + pitchOffset - player.y * scale;
                 ctx.fillStyle = 'rgba(0,0,0,0.15)';
-                ctx.fillRect(screenX - boxW / 2, shadowY + boxH * scale, boxW, 10);
+                ctx.fillRect(screenX - boxW / 2, shadowY + boxH * scale, boxW, 8);
 
-                // Objekt flach auf den Boden setzen
+                // Volumenkörper zeichnen
                 ctx.fillStyle = obj.c;
                 ctx.fillRect(screenX - boxW / 2, screenY, boxW, boxH);
 
-                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.lineWidth = 1;
                 ctx.strokeRect(screenX - boxW / 2, screenY, boxW, boxH);
             });
 
